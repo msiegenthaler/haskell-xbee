@@ -73,7 +73,7 @@ word8ToFrame = ContTransform (step []) []
     where parse = runGetPartial (get::Get Frame)
           step fs i
                 | i == startDelimiter = step' (parse:fs) [] i
-                | otherwise           = step' fs            [] i
+                | otherwise           = step' fs         [] i
           step' [] []  _ = ([], word8ToFrame)
           step' [] fs' _ = ([], ContTransform (step fs') [])
           step' (f:fs) fs' i = case f (BS.singleton i) of
