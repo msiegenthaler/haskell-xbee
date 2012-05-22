@@ -48,7 +48,7 @@ Library
   -- Exposed-modules:     
   
   -- Packages needed in order to build this package.
-  Build-depends: base > 4, Data.SouSiT
+  Build-depends: base > 4, sousit, cereal
   
   -- Modules not exported by this package.
   -- Other-modules:       
