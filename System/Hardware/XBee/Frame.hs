@@ -47,6 +47,7 @@ instance Serialize Frame where
         del <- getWord8
         when (del /= startDelimiter) $ fail "missing start delimiter"
         len <- getWord16be
+        when (fromIntegral len > maxFrameData) $ fail "invalid frame length"
         d <- (liftM BS.unpack $ (getBytes . fromIntegral) len)
         cs <- getWord8
         when (cs /= checksum d) $ fail "frame checksum is wrong"
