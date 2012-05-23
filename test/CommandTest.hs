@@ -85,6 +85,22 @@ instance Arbitrary Address16 where
     arbitrary = liftM Address16 (arbitrary :: Gen Word16)
 
 
+-- Transmit status
+
+transmitStatusSerialize =
+        ser TransmitSuccess == [0]
+     && ser TransmitNoAck == [1]
+     && ser TransmitCcaFailure == [2]
+     && ser TransmitPurged == [3]
+
+transmitStatusSerializeParse :: TransmitStatus -> Bool
+transmitStatusSerializeParse = serParseTest
+
+instance Arbitrary TransmitStatus where
+    arbitrary = elements $ enumFrom minBound
+
+
+
 --Main
 main = defaultMain tests
 
@@ -102,6 +118,10 @@ tests = [
     testGroup "CommandStatus" [
         testProperty "values are correctly serialized" commandStatusSerialize,
         testProperty "serialize and then parse yields original value" commandStatusSerializeParse
+    ],
+    testGroup "TransmitStatus" [
+        testProperty "values are correctly serialized" transmitStatusSerialize,
+        testProperty "serialize and then parse yields original value" transmitStatusSerializeParse
     ],
     testGroup "Address64" [
         testProperty "serialize and then parse yields original value" address64SerializeParse
