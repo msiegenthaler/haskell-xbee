@@ -64,7 +64,10 @@ data ModemStatus = HardwareReset
                  | CoordinatorRealignment
                  | CoordinatorStarted deriving (Enum, Show, Eq, Bounded)
 
-newtype CommandName = CommandName (Word8, Word8)
+newtype CommandName = CommandName (Word8, Word8) deriving (Eq)
+instance Show CommandName where
+    show (CommandName (c1, c2)) = "Command " ++ [toChar c1,toChar c2]
+        where toChar = toEnum . fromIntegral
 
 data CommandStatus = CmdOK
                    | CmdError
