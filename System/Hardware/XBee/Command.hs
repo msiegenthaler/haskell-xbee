@@ -9,7 +9,7 @@ module System.Hardware.XBee.Command (
     broadcastAddress,
     disabledAddress,
     -- * Command
-    CommandId,
+    CommandName,
     CommandStatus(..),
     ModemStatus(..),
     Commands(..)
@@ -56,7 +56,7 @@ data ModemStatus = HardwareReset
                  | CoordinatorRealignment
                  | CoordinatorStarted deriving (Enum, Show, Eq, Bounded)
 
-newtype CommandId = CommandId (Word8, Word8)
+newtype CommandName = CommandName (Word8, Word8)
 
 data CommandStatus = CmdOK
                    | CmdError
@@ -65,17 +65,17 @@ data CommandStatus = CmdOK
 
 -- | Commands to/from the XBee
 data Commands = ModemStatusUpdate ModemStatus 
-              | ATCommand FrameId CommandId [Word8]
-              | ATQueueCommand FrameId CommandId
-              | ATCommandResponse FrameId CommandId CommandStatus [Word8]
-              | RemoteATCommand64 FrameId Address64 Bool CommandId [Word8]
-              | RemoteATCommand16 FrameId Address16 Bool CommandId [Word8]
-              | RemoteATCommandResponse FrameId Address64 Address16 CommandId CommandStatus [Word8]
+              | ATCommand FrameId CommandName [Word8]
+              | ATQueueCommand FrameId CommandName
+              | ATCommandResponse FrameId CommandName CommandStatus [Word8]
+              | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
+              | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
+              | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
               -- TODO
 
-instance Serialize CommandId where
-    get = liftM CommandId $ liftM2 (,) getWord8 getWord8
-    put (CommandId (b1,b2)) = putWord8 b1 >> putWord8 b2
+instance Serialize CommandName where
+    get = liftM CommandName $ liftM2 (,) getWord8 getWord8
+    put (CommandName (b1,b2)) = putWord8 b1 >> putWord8 b2
 instance Serialize ModemStatus where
     get = liftM (toEnum . fromIntegral) getWord8
     put = putWord8 . fromIntegral . fromEnum
