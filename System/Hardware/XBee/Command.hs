@@ -15,6 +15,9 @@ module System.Hardware.XBee.Command (
     ModemStatus(..),
     DisableAck,
     BroadcastPan,
+    SignalStrength,
+    dBm,
+    fromDbm,
     TransmitStatus(..),
     Commands(..)
 ) where
@@ -78,6 +81,8 @@ data CommandStatus = CmdOK
 type DisableAck = Bool
 -- | Send packet with broadcast Pan ID.
 type BroadcastPan = Bool
+type AddressBroadcast = Bool
+type PanBroadcast = Bool
 
 -- | Status/Result of a transmitted packet.
 data TransmitStatus =
@@ -94,6 +99,21 @@ data TransmitStatus =
                       -- Does not apply to broadcasts.
                     | TransmitPurged deriving (Enum, Show, Eq, Bounded)
 
+
+newtype SignalStrength = SignalStrength Word8 deriving (Eq)
+-- | Signal strength in dBm (negative value, 0 is best).
+dBm :: SignalStrength -> Int
+dBm (SignalStrength s) = 0 - (fromIntegral s)
+-- | Creates a signal strength. Values >0 and <255 will be truncated to 0 resp. 255.
+fromDbm :: Int -> SignalStrength
+fromDbm v | v > 0     = SignalStrength 0
+          | v < 255   = SignalStrength 255
+          | otherwise = SignalStrength (fromIntegral v)
+instance Show SignalStrength where
+    show = (++ " dBm") . show . dBm
+instance Ord SignalStrength where
+    a <= b = (dBm a) <= (dBm b)
+
 -- | Commands to/from the XBee
 data Commands = ModemStatusUpdate ModemStatus 
               | ATCommand FrameId CommandName [Word8]
@@ -105,11 +125,17 @@ data Commands = ModemStatusUpdate ModemStatus
               | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
               | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
               | TransmitResponse FrameId TransmitStatus
+              | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
+              | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
+              deriving (Show, Eq)
+
 
 instance Serialize CommandName where
     get = liftM CommandName $ liftM2 (,) getWord8 getWord8
     put (CommandName (b1,b2)) = putWord8 b1 >> putWord8 b2
-
+instance Serialize SignalStrength where
+    get = liftM SignalStrength getWord8
+    put (SignalStrength s) = putWord8 s
 
 getEnumWord8 :: (Enum e) => Get e
 getEnumWord8 = liftM (toEnum . fromIntegral) getWord8
