@@ -1,6 +1,7 @@
 module System.Hardware.XBee.Command (
     -- * FrameId
     FrameId,
+    noFrameId,
     frameId,
     nextFrame,
     -- * Address
@@ -21,10 +22,13 @@ import Control.Monad
 
 
 newtype FrameId = FrameId Word8 deriving (Show, Eq)
+-- | Don't use a FrameId.
+noFrameId = FrameId 0
 -- | Initial FrameId.
-frameId = FrameId 0
--- | The next FrameId. The ids are looped (after FrameId 255 follows FrameId 0)
-nextFrame (FrameId i) = FrameId (i+1) --overflow
+frameId = FrameId 1
+-- | The next FrameId. The ids are looped (after FrameId 255 follows FrameId 1)
+nextFrame (FrameId 255) = frameId --overflow
+nextFrame (FrameId i)   = FrameId (i+1)
 instance Serialize FrameId where
     get = liftM FrameId getWord8
     put (FrameId i) = putWord8 i

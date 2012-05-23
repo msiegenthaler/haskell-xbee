@@ -26,7 +26,8 @@ frameIdSerializeParse v = serParseTest (frameForId v)
 frameIdParseWord8 w = runGet get (BS.singleton w) == Right (frameForId w)
 
 frameForId :: (Num n, Eq n) => n -> FrameId
-frameForId 0 = frameId
+frameForId 0 = noFrameId
+frameForId 1 = frameId
 frameForId i = nextFrame $ frameForId $ i - 1
 
 idForFrame :: FrameId -> Word8
