@@ -69,6 +69,20 @@ instance Arbitrary CommandStatus where
     arbitrary = elements $ enumFrom minBound
 
 
+-- Address
+
+address64SerializeParse :: Address64 -> Bool
+address64SerializeParse = serParseTest
+
+address16SerializeParse :: Address16 -> Bool
+address16SerializeParse = serParseTest
+
+instance Arbitrary Address64 where
+    arbitrary = liftM Address64 (arbitrary :: Gen Word64)
+
+instance Arbitrary Address16 where
+    arbitrary = liftM Address16 (arbitrary :: Gen Word16)
+
 
 --Main
 main = defaultMain tests
@@ -87,4 +101,10 @@ tests = [
     testGroup "CommandStatus" [
         testProperty "values are correctly serialized" commandStatusSerialize,
         testProperty "serialize and then parse yields original value" commandStatusSerializeParse
+    ],
+    testGroup "Address64" [
+        testProperty "serialize and then parse yields original value" address64SerializeParse
+    ],
+    testGroup "Address16" [
+        testProperty "serialize and then parse yields original value" address16SerializeParse
     ]]

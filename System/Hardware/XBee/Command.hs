@@ -3,6 +3,11 @@ module System.Hardware.XBee.Command (
     FrameId,
     frameId,
     nextFrame,
+    -- * Address
+    Address64(..),
+    Address16(..),
+    broadcastAddress,
+    disabledAddress,
     -- * Command
     CommandId,
     CommandStatus(..),
@@ -20,6 +25,27 @@ newtype FrameId = FrameId Word8 deriving (Show, Eq)
 frameId = FrameId 0
 -- | The next FrameId. The ids are looped (after FrameId 255 follows FrameId 0)
 nextFrame (FrameId i) = FrameId (i+1) --overflow
+instance Serialize FrameId where
+    get = liftM FrameId getWord8
+    put (FrameId i) = putWord8 i
+
+
+-- | Address of an XBee device.
+newtype Address64 = Address64 Word64 deriving (Show, Eq)
+-- | Address for broadcasts to all XBee devices.
+broadcastAddress = Address64 0xFFFF
+instance Serialize Address64 where
+    get = liftM Address64 getWord64be
+    put (Address64 a) = putWord64be a
+
+-- | 16-bit network address of an XBee device.
+newtype Address16 = Address16 Word16 deriving (Show, Eq)
+-- | Address to disable 16-bit addressing.
+disabledAddress  = Address16 0xFFFE
+instance Serialize Address16 where
+    get = liftM Address16 getWord16be
+    put (Address16 a) = putWord16be a
+
 
 
 data ModemStatus = HardwareReset
@@ -42,11 +68,11 @@ data Commands = ModemStatusUpdate ModemStatus
               | ATCommand FrameId CommandId [Word8]
               | ATQueueCommand FrameId CommandId
               | ATCommandResponse FrameId CommandId CommandStatus [Word8]
+              | RemoteATCommand64 FrameId Address64 Bool CommandId [Word8]
+              | RemoteATCommand16 FrameId Address16 Bool CommandId [Word8]
+              | RemoteATCommandResponse FrameId Address64 Address16 CommandId CommandStatus [Word8]
               -- TODO
 
-instance Serialize FrameId where
-    get = liftM FrameId getWord8
-    put (FrameId i) = putWord8 i
 instance Serialize CommandId where
     get = liftM CommandId $ liftM2 (,) getWord8 getWord8
     put (CommandId (b1,b2)) = putWord8 b1 >> putWord8 b2
