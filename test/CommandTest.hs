@@ -11,13 +11,17 @@ import qualified Data.ByteString as BS
 import Control.Monad
 
 
+ser :: Serialize s => s -> [Word8]
+ser = BS.unpack . runPut . put
+serParseTest s = (runGet get $ runPut $ put s) == Right s
+
+
 -- FrameId
 
 frameIdLoopsAroundAfter255 = nextFrame (frameForId 255) == frameId
 
 frameIdSerializeParse :: Word8 -> Bool
-frameIdSerializeParse v = (runGet get $ runPut $ put frame) == Right frame
-    where frame = frameForId v
+frameIdSerializeParse v = serParseTest (frameForId v)
 
 frameIdParseWord8 w = runGet get (BS.singleton w) == Right (frameForId w)
 
@@ -32,7 +36,7 @@ instance Arbitrary FrameId where
     arbitrary = liftM frameForId (choose (0, 255)::Gen Word8)
 
 
---Modem status
+-- Modem status
 
 modemStatusSerialize =
         ser HardwareReset == [0]
@@ -42,12 +46,26 @@ modemStatusSerialize =
      && ser SyncLost == [4]
      && ser CoordinatorRealignment == [5]
      && ser CoordinatorStarted == [6]
-    where ser = BS.unpack . runPut . put
 
 modemStatusSerializeParse :: ModemStatus -> Bool
-modemStatusSerializeParse s = (runGet get $ runPut $ put s) == Right s
+modemStatusSerializeParse = serParseTest
 
 instance Arbitrary ModemStatus where
+    arbitrary = elements $ enumFrom minBound
+
+
+-- Command status
+
+commandStatusSerialize =
+        ser CmdOK == [0]
+     && ser CmdError == [1]
+     && ser CmdInvalidCommand == [2]
+     && ser CmdInvalidParameter == [3]
+
+commandStatusSerializeParse :: CommandStatus -> Bool
+commandStatusSerializeParse = serParseTest
+
+instance Arbitrary CommandStatus where
     arbitrary = elements $ enumFrom minBound
 
 
@@ -65,4 +83,8 @@ tests = [
     testGroup "ModemStatus" [
         testProperty "values are correctly serialized" modemStatusSerialize,
         testProperty "serialize and then parse yields original value" modemStatusSerializeParse
+    ],
+    testGroup "CommandStatus" [
+        testProperty "values are correctly serialized" commandStatusSerialize,
+        testProperty "serialize and then parse yields original value" commandStatusSerializeParse
     ]]
