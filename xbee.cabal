@@ -45,14 +45,15 @@ Cabal-version:       >= 1.9.2
 
 Library
   -- Modules exported by the library.
-  -- Exposed-modules:     
+  Exposed-modules: System.Hardware.XBee.Command, System.Hardware.XBee.Frame
   
   -- Packages needed in order to build this package.
-  Build-depends: base > 4, sousit, cereal
+  Build-depends: base > 4, sousit, cereal, bytestring
   
-  -- Modules not exported by this package.
-  -- Other-modules:       
-  
-  -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
-  -- Build-tools:         
-  
+
+Test-Suite command-test
+  Type: exitcode-stdio-1.0
+  Hs-source-dirs: test
+  Main-Is: CommandTest.hs
+  Build-Depends: base > 4, mtl, xbee, cereal, bytestring,
+                 QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9  
