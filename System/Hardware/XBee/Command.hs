@@ -25,6 +25,7 @@ module System.Hardware.XBee.Command (
 ) where
 
 import Data.Word
+import Data.Bits
 import Data.Serialize
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
@@ -168,12 +169,23 @@ instance Serialize CommandIn where
     put (RemoteATCommandResponse f a64 a16 cmd st d) = putWord8 0x97 >> put f >> put a64 >> put a16 >>
         put cmd >> put st >> putData d
     put (TransmitResponse f st) = putWord8 0x89 >> put f >> put st
+    put (Receive64 a ss adbc panbc d) = putWord8 0x80 >> put a >> put ss >> put opts >> putData d
+        where opts = (bitOpt 1 adbc) .|. (bitOpt 2 panbc)
+    put (Receive16 a ss adbc panbc d) = putWord8 0x81 >> put a >> put ss >> put opts >> putData d
+        where opts = (bitOpt 1 adbc) .|. (bitOpt 2 panbc)
+
+bitOpt :: Int -> Bool -> Word8
+bitOpt i b = if b then (bit i) else 0
 
 getCmdIn :: Word8 -> Get CommandIn
 getCmdIn 0x8A = liftM ModemStatusUpdate get
 getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
 getCmdIn 0x97 = RemoteATCommandResponse <$> get <*> get <*> get <*> get <*> get <*> getTillEnd
 getCmdIn 0x89 = liftM2 TransmitResponse get get
+getCmdIn 0x80 = create <$> get <*> get <*> getWord8 <*> getTillEnd
+    where create adr ss opts d = Receive64 adr ss (testBit opts 1) (testBit opts 2) d
+getCmdIn 0x81 = create <$> get <*> get <*> getWord8 <*> getTillEnd
+    where create adr ss opts d = Receive16 adr ss (testBit opts 1) (testBit opts 2) d
 getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
 
 getTillEnd :: Get [Word8]

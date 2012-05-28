@@ -150,6 +150,23 @@ transmitResponseSerializeParse f s = serParseTest (TransmitResponse f s)
 transmitResponseExample = parse [0x89, 0x10, 0x00] ==
         Right (TransmitResponse (frameForId 0x10) TransmitSuccess)
 
+receive64SerializeParse from ss ack bc d = serParseTest $ Receive64 from ss ack bc d
+
+receive64Example :: [Word8] -> Bool
+receive64Example d = parse ([0x80,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            0x28, 0x00] ++ d) ==
+        Right (Receive64 (Address64 0x0102030405060708) (fromDbm (-40)) False False d)
+
+receive16SerializeParse from ss ack bc d = serParseTest $ Receive16 from ss ack bc d
+
+receive16Example :: [Word8] -> Bool
+receive16Example d = parse ([0x81,
+            0x01, 0x02,
+            0x28, 0x00] ++ d) ==
+        Right (Receive16 (Address16 0x0102) (fromDbm (-40)) False False d)
+
+
 --Main
 main = defaultMain tests
 
@@ -194,5 +211,9 @@ tests = [
         testProperty "RemoteATCommandResponse serialize & parse yields original" remoteAtCommandResponseSerializeParse,
         testProperty "RemoteATCommandResponse example works" remoteAtCommandResponseExample,
         testProperty "TransmitResponse serialize & parse yields original" transmitResponseSerializeParse,
-        testProperty "TransmitResponse example works" transmitResponseExample
+        testProperty "TransmitResponse example works" transmitResponseExample,
+        testProperty "Receive64 serialize & parse yields original" receive64SerializeParse,
+        testProperty "Receive64 example works" receive64Example,
+        testProperty "Receive16 serialize & parse yields original" receive16SerializeParse,
+        testProperty "Receive16 example works" receive16Example
     ]]
