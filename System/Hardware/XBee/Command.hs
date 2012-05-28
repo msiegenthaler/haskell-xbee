@@ -19,7 +19,7 @@ module System.Hardware.XBee.Command (
     dBm,
     fromDbm,
     TransmitStatus(..),
-    Commands(..)
+    Command(..)
 ) where
 
 import Data.Word
@@ -115,19 +115,19 @@ instance Ord SignalStrength where
     a <= b = (dBm a) <= (dBm b)
 
 -- | Commands to/from the XBee
-data Commands = ModemStatusUpdate ModemStatus 
-              | ATCommand FrameId CommandName [Word8]
-              | ATQueueCommand FrameId CommandName
-              | ATCommandResponse FrameId CommandName CommandStatus [Word8]
-              | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
-              | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
-              | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
-              | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
-              | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
-              | TransmitResponse FrameId TransmitStatus
-              | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
-              | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
-              deriving (Show, Eq)
+data Command = ModemStatusUpdate ModemStatus
+             | ATCommand FrameId CommandName [Word8]
+             | ATQueueCommand FrameId CommandName
+             | ATCommandResponse FrameId CommandName CommandStatus [Word8]
+             | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
+             | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
+             | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
+             | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
+             | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
+             | TransmitResponse FrameId TransmitStatus
+             | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
+             | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
+               deriving (Show, Eq)
 
 
 instance Serialize CommandName where
