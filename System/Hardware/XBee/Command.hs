@@ -173,19 +173,23 @@ instance Serialize CommandIn where
         put cmd >> put st >> putData d
     put (TransmitResponse f st) = putWord8 0x89 >> put f >> put st
     put (Receive64 a ss adbc panbc d) = putWord8 0x80 >> put a >> put ss >> put opts >> putData d
-        where opts = (bitOpt 1 adbc) .|. (bitOpt 2 panbc)
+        where opts = (bitOpt receiveBitAddress adbc) .|. (bitOpt receiveBitPan panbc)
     put (Receive16 a ss adbc panbc d) = putWord8 0x81 >> put a >> put ss >> put opts >> putData d
-        where opts = (bitOpt 1 adbc) .|. (bitOpt 2 panbc)
+        where opts = (bitOpt receiveBitAddress adbc) .|. (bitOpt receiveBitPan panbc)
     get = getWord8 >>= getCmdIn where
         getCmdIn 0x8A = liftM ModemStatusUpdate get
         getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
         getCmdIn 0x97 = RemoteATCommandResponse <$> get <*> get <*> get <*> get <*> get <*> getTillEnd
         getCmdIn 0x89 = liftM2 TransmitResponse get get
         getCmdIn 0x80 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create adr ss opts d = Receive64 adr ss (testBit opts 1) (testBit opts 2) d
+            where create adr ss opts d =
+                    Receive64 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan) d
         getCmdIn 0x81 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create adr ss opts d = Receive16 adr ss (testBit opts 1) (testBit opts 2) d
+            where create adr ss opts d =
+                    Receive16 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan) d
         getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
+receiveBitAddress = 1
+receiveBitPan = 2
 
 instance Serialize CommandOut where
     put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putData d
