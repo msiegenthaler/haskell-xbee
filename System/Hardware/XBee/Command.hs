@@ -29,6 +29,7 @@ import Data.Serialize
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import Control.Monad
+import Control.Applicative
 
 
 newtype FrameId = FrameId Word8 deriving (Show, Eq)
@@ -164,10 +165,13 @@ instance Serialize CommandIn where
     get = getWord8 >>= getCmdIn
     put (ModemStatusUpdate s) = putWord8 0x8A >> put s
     put (ATCommandResponse f cmd st d) = putWord8 0x88 >> put f >> put cmd >> put st >> putData d
+    put (RemoteATCommandResponse f a64 a16 cmd st d) = putWord8 0x97 >> put f >> put a64 >> put a16 >>
+        put cmd >> put st >> putData d
 
 getCmdIn :: Word8 -> Get CommandIn
 getCmdIn 0x8A = liftM ModemStatusUpdate get
 getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
+getCmdIn 0x97 = RemoteATCommandResponse <$> get <*> get <*> get <*> get <*> get <*> getTillEnd
 getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
 
 getTillEnd :: Get [Word8]

@@ -125,6 +125,14 @@ atCommandResponseSerializeParse f cmd st val = serParseTest (ATCommandResponse f
 atCommandResponseExample = parse [0x88, 0x52, 0x4D, 0x59, 0x00, 0x23, 0x12] ==
         Right (ATCommandResponse (frameForId 0x52) (commandName 'M' 'Y') CmdOK [0x23, 0x12])
 
+remoteAtCommandResponseSerializeParse f a64 a16 cmd st val = serParseTest $
+    RemoteATCommandResponse f a64 a16 cmd st val
+
+remoteAtCommandResponseExample = parse [0x97, 0x52,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+            0xFF, 0xFE,
+            0x4D, 0x59, 0x00, 0x23, 0x12] ==
+        Right (RemoteATCommandResponse (frameForId 0x52) broadcastAddress disabledAddress (commandName 'M' 'Y') CmdOK [0x23, 0x12])
 
 
 --Main
@@ -163,5 +171,7 @@ tests = [
         testProperty "ModemStatusUpdate serialize & parse yields original" modemStatusUpdateSerializeParse,
         testProperty "ModemStatusUpdate example works" modemStatusUpdateParseExample,
         testProperty "ATCommandResponse serialize & parse yields original" atCommandResponseSerializeParse,
-        testProperty "ATCommandResponse example works" atCommandResponseExample
+        testProperty "ATCommandResponse example works" atCommandResponseExample,
+        testProperty "RemoteATCommandResponse serialize & parse yields original" remoteAtCommandResponseSerializeParse,
+        testProperty "RemoteATCommandResponse example works" remoteAtCommandResponseExample
     ]]
