@@ -199,6 +199,21 @@ remoteAtCommand16Example = parse [0x17, 0x01,
             0x05, 0x06, 0x07, 0x08] ==
         Right (RemoteATCommand16 (frameForId 1) (Address16 0x0102) True (commandName 'D' 'L') [5, 6, 7, 8])
 
+transmit64SerializeParse f adr da bc d = serParseTest (Transmit64 f adr da bc d)
+
+transmit64Example = parse [0x00, 0x02,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            0x00,
+            0x09, 0x08, 0x07] ==
+        Right (Transmit64 (frameForId 2) (Address64 0x0102030405060708) False False [0x09, 0x08, 0x07])
+
+transmit16SerializeParse f adr da bc d = serParseTest (Transmit16 f adr da bc d)
+
+transmit16Example = parse [0x01, 0x03,
+            0x01, 0x02,
+            0x00,
+            0x09, 0x08, 0x07] ==
+        Right (Transmit16 (frameForId 3) (Address16 0x0102) False False [0x09, 0x08, 0x07])
 
 --Main
 main = defaultMain tests
@@ -258,5 +273,9 @@ tests = [
         testProperty "RemoteATCommand64 serialize & parse yields original" remoteAtCommand64SerializeParse,
         testProperty "RemoteATCommand64 example works" remoteAtCommand64Example,
         testProperty "RemoteATCommand16 serialize & parse yields original" remoteAtCommand16SerializeParse,
-        testProperty "RemoteATCommand16 example works" remoteAtCommand16Example
+        testProperty "RemoteATCommand16 example works" remoteAtCommand16Example,
+        testProperty "Transmit64 serialize & parse yields original" transmit64SerializeParse,
+        testProperty "Transmit64 example works" transmit64Example,
+        testProperty "Transmit16 serialize & parse yields original" transmit16SerializeParse,
+        testProperty "Transmit16 example works" transmit16Example
     ]]

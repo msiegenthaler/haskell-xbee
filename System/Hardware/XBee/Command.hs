@@ -198,6 +198,10 @@ instance Serialize CommandOut where
             putWord16be 0xFFFE >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
     put (RemoteATCommand16 f adr ac cmd d) = putWord8 0x17 >> put f >> putWord64be 0xFFFF >>
             put adr >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
+    put (Transmit64 f adr dack bc d) = putWord8 0x00 >> put f >> put adr >> put opts >> putData d
+        where opts = (bitOpt transmitBitDisableAck dack) .|. (bitOpt transmitBitPanBroadcast bc)
+    put (Transmit16 f adr dack bc d) = putWord8 0x01 >> put f >> put adr >> put opts >> putData d
+        where opts = (bitOpt transmitBitDisableAck dack) .|. (bitOpt transmitBitPanBroadcast bc)
     get = getWord8 >>= getCmdOut where
         getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
         getCmdOut 0x09 = ATQueueCommand <$> get <*> get <*> getTillEnd
@@ -210,8 +214,16 @@ instance Serialize CommandOut where
                 d     <- getTillEnd
                 return (if   adr64 /= broadcastAddress then RemoteATCommand64 f adr64 ac cmd d
                         else RemoteATCommand16 f adr16 ac cmd d)
+        getCmdOut 0x00 = create <$> get <*> get <*> getWord8 <*> getTillEnd
+            where create f adr opts d =
+                    Transmit64 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast) d
+        getCmdOut 0x01 = create <$> get <*> get <*> getWord8 <*> getTillEnd
+            where create f adr opts d =
+                    Transmit16 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast) d
         getCmdOut o    = fail $ "undefined PC->XBee command " ++ show o
 remoteAtCommandBitAC = 1
+transmitBitDisableAck = 1
+transmitBitPanBroadcast = 3
 
 
 bitOpt :: Int -> Bool -> Word8
