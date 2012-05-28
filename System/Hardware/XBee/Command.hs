@@ -183,6 +183,12 @@ instance Serialize CommandIn where
             where create adr ss opts d = Receive16 adr ss (testBit opts 1) (testBit opts 2) d
         getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
 
+instance Serialize CommandOut where
+    put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putData d
+    get = getWord8 >>= getCmdOut where
+        getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
+        getCmdOut o    = fail $ "undefined PC->XBee command " ++ show o
+
 bitOpt :: Int -> Bool -> Word8
 bitOpt i b = if b then (bit i) else 0
 

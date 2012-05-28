@@ -167,6 +167,14 @@ receive16Example d = parse ([0x81,
         Right (Receive16 (Address16 0x0102) (fromDbm (-40)) False False d)
 
 
+-- Command Out
+
+atCommandSerializeParse f cmd d = serParseTest (ATCommand f cmd d)
+
+atCommandExample = parse [0x08, 0x01, 0x44, 0x4C, 0x05, 0x06, 0x07, 0x08] ==
+        Right (ATCommand (frameForId 1) (commandName 'D' 'L') [5, 6, 7, 8])
+
+
 --Main
 main = defaultMain tests
 
@@ -216,4 +224,8 @@ tests = [
         testProperty "Receive64 example works" receive64Example,
         testProperty "Receive16 serialize & parse yields original" receive16SerializeParse,
         testProperty "Receive16 example works" receive16Example
+    ],
+    testGroup "CommandOut" [
+        testProperty "ATCommandResponse serialize & parse yields original" atCommandSerializeParse,
+        testProperty "ATCommandResponse example works" atCommandExample
     ]]
