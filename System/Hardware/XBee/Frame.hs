@@ -3,6 +3,7 @@ module System.Hardware.XBee.Frame (
     Frame,
     maxFrameData,
     frame,
+    frameData,
     frames,
     -- * Serialize
     get,
@@ -30,6 +31,10 @@ maxFrameData = 255
 -- | Create a frame from the data. All data exceeding maxFrameData is silently discarded.
 frame :: [Word8] -> Frame
 frame = Frame . (take maxFrameData)
+
+-- | The data the is contained within the frame.
+frameData :: Frame -> [Word8]
+frameData (Frame d) = d
 
 -- | Creates as may frames as neccessary to contain all the data.
 frames :: [Word8] -> [Frame]
