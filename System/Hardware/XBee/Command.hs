@@ -11,6 +11,7 @@ module System.Hardware.XBee.Command (
     disabledAddress,
     -- * Command
     CommandName,
+    commandName,
     CommandStatus(..),
     ModemStatus(..),
     DisableAck,
@@ -26,6 +27,7 @@ module System.Hardware.XBee.Command (
 import Data.Word
 import Data.Serialize
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import Control.Monad
 
 
@@ -72,6 +74,9 @@ newtype CommandName = CommandName (Word8, Word8) deriving (Eq)
 instance Show CommandName where
     show (CommandName (c1, c2)) = "Command " ++ [toChar c1,toChar c2]
         where toChar = toEnum . fromIntegral
+commandName :: Char -> Char -> CommandName
+commandName a b = CommandName (c2w a, c2w b)
+    where c2w = fromIntegral . fromEnum
 
 data CommandStatus = CmdOK
                    | CmdError

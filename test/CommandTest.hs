@@ -1,3 +1,5 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 module Main (main) where
 
 import Test.QuickCheck
@@ -13,8 +15,11 @@ import Control.Monad
 
 ser :: Serialize s => s -> [Word8]
 ser = BS.unpack . runPut . put
+
 serParseTest s = (runGet get $ runPut $ put s) == Right s
 
+parse :: Serialize s => [Word8] -> Either String s
+parse = runGet get . BS.pack
 
 -- FrameId
 
@@ -36,6 +41,15 @@ idForFrame = read . drop 1 . dropWhile (/=' ') . show
 instance Arbitrary FrameId where
     arbitrary = liftM frameForId (choose (0, 255)::Gen Word8)
 
+
+-- Command name
+commandNameSerializeParse a b = serParseTest (commandName a b)
+
+commandNameExampleDH = parse [0x44, 0x48] == Right (commandName 'D' 'H')
+
+instance Arbitrary CommandName where
+    arbitrary = liftM2 commandName letter letter
+        where letter = choose ('A', 'Z')
 
 -- Modem status
 
@@ -114,6 +128,10 @@ tests = [
     testGroup "ModemStatus" [
         testProperty "values are correctly serialized" modemStatusSerialize,
         testProperty "serialize and then parse yields original value" modemStatusSerializeParse
+    ],
+    testGroup "CommandName" [
+        testProperty "serialize and then parse yields original value" commandNameSerializeParse,
+        testProperty "value DH is parsed correctly" commandNameExampleDH
     ],
     testGroup "CommandStatus" [
         testProperty "values are correctly serialized" commandStatusSerialize,
