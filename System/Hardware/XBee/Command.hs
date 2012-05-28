@@ -20,6 +20,7 @@ module System.Hardware.XBee.Command (
     dBm,
     fromDbm,
     TransmitStatus(..),
+    ApplyChanges,
     CommandIn(..),
     CommandOut(..)
 ) where
@@ -122,6 +123,9 @@ instance Show SignalStrength where
 instance Ord SignalStrength where
     a <= b = (dBm a) <= (dBm b)
 
+-- | Whether to apply to changes on the remote. If set to False then an AC command must be sent.
+type ApplyChanges = Bool
+
 -- | Commands or responses sent from the XBee to the computer.
 data CommandIn =  ModemStatusUpdate ModemStatus
                 | ATCommandResponse FrameId CommandName CommandStatus [Word8]
@@ -133,8 +137,8 @@ data CommandIn =  ModemStatusUpdate ModemStatus
 -- | Commands sent from to computer to the XBee.
 data CommandOut = ATCommand FrameId CommandName [Word8]
                 | ATQueueCommand FrameId CommandName [Word8]
-                | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
-                | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
+                | RemoteATCommand64 FrameId Address64 ApplyChanges CommandName [Word8]
+                | RemoteATCommand16 FrameId Address16 ApplyChanges CommandName [Word8]
                 | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
                 | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
                   deriving (Show, Eq)
