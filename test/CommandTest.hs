@@ -134,6 +134,10 @@ remoteAtCommandResponseExample = parse [0x97, 0x52,
             0x4D, 0x59, 0x00, 0x23, 0x12] ==
         Right (RemoteATCommandResponse (frameForId 0x52) broadcastAddress disabledAddress (commandName 'M' 'Y') CmdOK [0x23, 0x12])
 
+transmitResponseSerializeParse f s = serParseTest (TransmitResponse f s)
+
+transmitResponseExample = parse [0x89, 0x10, 0x00] ==
+        Right (TransmitResponse (frameForId 0x10) TransmitSuccess)
 
 --Main
 main = defaultMain tests
@@ -173,5 +177,7 @@ tests = [
         testProperty "ATCommandResponse serialize & parse yields original" atCommandResponseSerializeParse,
         testProperty "ATCommandResponse example works" atCommandResponseExample,
         testProperty "RemoteATCommandResponse serialize & parse yields original" remoteAtCommandResponseSerializeParse,
-        testProperty "RemoteATCommandResponse example works" remoteAtCommandResponseExample
+        testProperty "RemoteATCommandResponse example works" remoteAtCommandResponseExample,
+        testProperty "TransmitResponse serialize & parse yields original" transmitResponseSerializeParse,
+        testProperty "TransmitResponse example works" transmitResponseExample
     ]]

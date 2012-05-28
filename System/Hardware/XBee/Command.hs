@@ -167,11 +167,13 @@ instance Serialize CommandIn where
     put (ATCommandResponse f cmd st d) = putWord8 0x88 >> put f >> put cmd >> put st >> putData d
     put (RemoteATCommandResponse f a64 a16 cmd st d) = putWord8 0x97 >> put f >> put a64 >> put a16 >>
         put cmd >> put st >> putData d
+    put (TransmitResponse f st) = putWord8 0x89 >> put f >> put st
 
 getCmdIn :: Word8 -> Get CommandIn
 getCmdIn 0x8A = liftM ModemStatusUpdate get
 getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
 getCmdIn 0x97 = RemoteATCommandResponse <$> get <*> get <*> get <*> get <*> get <*> getTillEnd
+getCmdIn 0x89 = liftM2 TransmitResponse get get
 getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
 
 getTillEnd :: Get [Word8]
