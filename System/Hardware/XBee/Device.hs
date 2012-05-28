@@ -23,14 +23,6 @@ newDevice src sink = XBee src' sink'
     where sink' = T.map commandToFrame =$= frameToWord8 =$ sink
           src'  = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
 
-commandToFrame :: CommandOut -> Frame
-commandToFrame cmd = frame (ser cmd)
-    where ser = BS.unpack . runPut . put
-
-frameToCommand :: Frame -> Either String CommandIn
-frameToCommand = parse . frameData
-    where parse = runGet get . BS.pack
-
 xbeeOut :: Monad m => XBee m -> Sink CommandOut m ()
 xbeeOut (XBee _ sink) = sink
 

@@ -22,7 +22,10 @@ module System.Hardware.XBee.Command (
     TransmitStatus(..),
     ApplyChanges,
     CommandIn(..),
-    CommandOut(..)
+    CommandOut(..),
+    -- * Conversion to/from frame
+    commandToFrame,
+    frameToCommand
 ) where
 
 import Data.Word
@@ -32,6 +35,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import Control.Monad
 import Control.Applicative
+import System.Hardware.XBee.Frame
 
 
 newtype FrameId = FrameId Word8 deriving (Show, Eq)
@@ -143,6 +147,16 @@ data CommandOut = ATCommand FrameId CommandName [Word8]
                 | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
                   deriving (Show, Eq)
 
+
+-- | Serializes an (outgoing) command into a frame.
+commandToFrame :: CommandOut -> Frame
+commandToFrame cmd = frame (ser cmd)
+    where ser = BS.unpack . runPut . put
+
+-- | Parses a frame into a (incomming) command.
+frameToCommand :: Frame -> Either String CommandIn
+frameToCommand = parse . frameData
+    where parse = runGet get . BS.pack
 
 
 instance Serialize CommandName where
