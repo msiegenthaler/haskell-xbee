@@ -185,8 +185,10 @@ instance Serialize CommandIn where
 
 instance Serialize CommandOut where
     put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putData d
+    put (ATQueueCommand f cmd d) = putWord8 0x09 >> put f >> put cmd >> putData d
     get = getWord8 >>= getCmdOut where
         getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
+        getCmdOut 0x09 = ATQueueCommand <$> get <*> get <*> getTillEnd
         getCmdOut o    = fail $ "undefined PC->XBee command " ++ show o
 
 bitOpt :: Int -> Bool -> Word8

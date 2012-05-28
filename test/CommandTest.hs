@@ -174,6 +174,10 @@ atCommandSerializeParse f cmd d = serParseTest (ATCommand f cmd d)
 atCommandExample = parse [0x08, 0x01, 0x44, 0x4C, 0x05, 0x06, 0x07, 0x08] ==
         Right (ATCommand (frameForId 1) (commandName 'D' 'L') [5, 6, 7, 8])
 
+atQueueCommandSerializeParse f cmd d = serParseTest (ATQueueCommand f cmd d)
+
+atQueueCommandExample = parse [0x09, 0x01, 0x44, 0x4C, 0x05, 0x06, 0x07, 0x08] ==
+        Right (ATQueueCommand (frameForId 1) (commandName 'D' 'L') [5, 6, 7, 8])
 
 --Main
 main = defaultMain tests
@@ -226,6 +230,8 @@ tests = [
         testProperty "Receive16 example works" receive16Example
     ],
     testGroup "CommandOut" [
-        testProperty "ATCommandResponse serialize & parse yields original" atCommandSerializeParse,
-        testProperty "ATCommandResponse example works" atCommandExample
+        testProperty "ATCommand serialize & parse yields original" atCommandSerializeParse,
+        testProperty "ATCommand example works" atCommandExample,
+        testProperty "ATQueueCommand serialize & parse yields original" atQueueCommandSerializeParse,
+        testProperty "ATQueueCommand example works" atQueueCommandExample
     ]]
