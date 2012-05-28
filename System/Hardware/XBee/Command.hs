@@ -132,7 +132,7 @@ data CommandIn =  ModemStatusUpdate ModemStatus
                   deriving (Show, Eq)
 -- | Commands sent from to computer to the XBee.
 data CommandOut = ATCommand FrameId CommandName [Word8]
-                | ATQueueCommand FrameId CommandName
+                | ATQueueCommand FrameId CommandName [Word8]
                 | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
                 | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
                 | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
