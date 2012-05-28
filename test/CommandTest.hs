@@ -114,6 +114,18 @@ instance Arbitrary TransmitStatus where
     arbitrary = elements $ enumFrom minBound
 
 
+-- Command In
+
+modemStatusUpdateSerializeParse s = serParseTest (ModemStatusUpdate s)
+
+modemStatusUpdateParseExample = parse [0x8A, 0x01] == Right (ModemStatusUpdate WatchdogTimerReset)
+
+atCommandResponseSerializeParse f cmd st val = serParseTest (ATCommandResponse f cmd st val)
+
+atCommandResponseExample = parse [0x88, 0x52, 0x4D, 0x59, 0x00, 0x23, 0x12] ==
+        Right (ATCommandResponse (frameForId 0x52) (commandName 'M' 'Y') CmdOK [0x23, 0x12])
+
+
 
 --Main
 main = defaultMain tests
@@ -146,4 +158,10 @@ tests = [
     ],
     testGroup "Address16" [
         testProperty "serialize and then parse yields original value" address16SerializeParse
+    ],
+    testGroup "CommandIn" [
+        testProperty "ModemStatusUpdate serialize & parse yields original" modemStatusUpdateSerializeParse,
+        testProperty "ModemStatusUpdate example works" modemStatusUpdateParseExample,
+        testProperty "ATCommandResponse serialize & parse yields original" atCommandResponseSerializeParse,
+        testProperty "ATCommandResponse example works" atCommandResponseExample
     ]]

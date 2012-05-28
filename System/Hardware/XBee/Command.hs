@@ -159,3 +159,19 @@ instance Serialize CommandStatus where
 instance Serialize TransmitStatus where
     get = getEnumWord8
     put = putEnumWord8
+
+instance Serialize CommandIn where
+    get = getWord8 >>= getCmdIn
+    put (ModemStatusUpdate s) = putWord8 0x8A >> put s
+    put (ATCommandResponse f cmd st d) = putWord8 0x88 >> put f >> put cmd >> put st >> putData d
+
+getCmdIn :: Word8 -> Get CommandIn
+getCmdIn 0x8A = liftM ModemStatusUpdate get
+getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
+getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
+
+getTillEnd :: Get [Word8]
+getTillEnd = liftM BS.unpack (remaining >>= getBytes)
+
+putData :: [Word8] -> Put
+putData = putByteString . BS.pack
