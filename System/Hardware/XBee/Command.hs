@@ -190,10 +190,25 @@ instance Serialize CommandIn where
 instance Serialize CommandOut where
     put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putData d
     put (ATQueueCommand f cmd d) = putWord8 0x09 >> put f >> put cmd >> putData d
+    put (RemoteATCommand64 f adr ac cmd d) = putWord8 0x17 >> put f >> put adr >>
+            putWord16be 0xFFFE >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
+    put (RemoteATCommand16 f adr ac cmd d) = putWord8 0x17 >> put f >> putWord64be 0xFFFF >>
+            put adr >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
     get = getWord8 >>= getCmdOut where
         getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
         getCmdOut 0x09 = ATQueueCommand <$> get <*> get <*> getTillEnd
+        getCmdOut 0x17 = do
+                f     <- get
+                adr64 <- get
+                adr16 <- get
+                ac    <- liftM ((flip testBit) remoteAtCommandBitAC) getWord8
+                cmd   <- get
+                d     <- getTillEnd
+                return (if   adr64 /= broadcastAddress then RemoteATCommand64 f adr64 ac cmd d
+                        else RemoteATCommand16 f adr16 ac cmd d)
         getCmdOut o    = fail $ "undefined PC->XBee command " ++ show o
+remoteAtCommandBitAC = 1
+
 
 bitOpt :: Int -> Bool -> Word8
 bitOpt i b = if b then (bit i) else 0
