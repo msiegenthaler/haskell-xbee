@@ -19,7 +19,8 @@ module System.Hardware.XBee.Command (
     dBm,
     fromDbm,
     TransmitStatus(..),
-    Command(..)
+    CommandIn(..),
+    CommandOut(..)
 ) where
 
 import Data.Word
@@ -114,20 +115,23 @@ instance Show SignalStrength where
 instance Ord SignalStrength where
     a <= b = (dBm a) <= (dBm b)
 
--- | Commands to/from the XBee
-data Command = ModemStatusUpdate ModemStatus
-             | ATCommand FrameId CommandName [Word8]
-             | ATQueueCommand FrameId CommandName
-             | ATCommandResponse FrameId CommandName CommandStatus [Word8]
-             | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
-             | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
-             | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
-             | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
-             | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
-             | TransmitResponse FrameId TransmitStatus
-             | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
-             | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
-               deriving (Show, Eq)
+-- | Commands or responses sent from the XBee to the computer.
+data CommandIn =  ModemStatusUpdate ModemStatus
+                | ATCommandResponse FrameId CommandName CommandStatus [Word8]
+                | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
+                | TransmitResponse FrameId TransmitStatus
+                | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
+                | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
+                  deriving (Show, Eq)
+-- | Commands sent from to computer to the XBee.
+data CommandOut = ATCommand FrameId CommandName [Word8]
+                | ATQueueCommand FrameId CommandName
+                | RemoteATCommand64 FrameId Address64 Bool CommandName [Word8]
+                | RemoteATCommand16 FrameId Address16 Bool CommandName [Word8]
+                | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
+                | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
+                  deriving (Show, Eq)
+
 
 
 instance Serialize CommandName where
