@@ -114,6 +114,17 @@ instance Arbitrary TransmitStatus where
     arbitrary = elements $ enumFrom minBound
 
 
+-- Signal Strength
+
+signalStrengthSerializeParse :: SignalStrength -> Bool
+signalStrengthSerializeParse s = serParseTest s
+
+signalStrengthExample = parse [0x28] == Right (fromDbm (-40))
+
+instance Arbitrary SignalStrength where
+    arbitrary = liftM fromDbm (choose ((-255), 0))
+
+
 -- Command In
 
 modemStatusUpdateSerializeParse s = serParseTest (ModemStatusUpdate s)
@@ -160,6 +171,10 @@ tests = [
     testGroup "CommandStatus" [
         testProperty "values are correctly serialized" commandStatusSerialize,
         testProperty "serialize and then parse yields original value" commandStatusSerializeParse
+    ],
+    testGroup "SignalStrength" [
+        testProperty "serialize and then parse yields original value" signalStrengthSerializeParse,
+        testProperty "value -40 (=0x28) is parsed correctly" signalStrengthExample
     ],
     testGroup "TransmitStatus" [
         testProperty "values are correctly serialized" transmitStatusSerialize,

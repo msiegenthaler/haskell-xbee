@@ -113,9 +113,9 @@ dBm :: SignalStrength -> Int
 dBm (SignalStrength s) = 0 - (fromIntegral s)
 -- | Creates a signal strength. Values >0 and <255 will be truncated to 0 resp. 255.
 fromDbm :: Int -> SignalStrength
-fromDbm v | v > 0     = SignalStrength 0
-          | v < 255   = SignalStrength 255
-          | otherwise = SignalStrength (fromIntegral v)
+fromDbm v | v > 0      = SignalStrength 0
+          | v < (-255) = SignalStrength 255
+          | otherwise  = SignalStrength (fromIntegral (-v))
 instance Show SignalStrength where
     show = (++ " dBm") . show . dBm
 instance Ord SignalStrength where
