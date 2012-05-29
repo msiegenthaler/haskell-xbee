@@ -11,20 +11,42 @@ import System.Hardware.XBee.Command
 import Data.Word
 import Data.Serialize
 import qualified Data.ByteString as BS
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Monad
+import Control.Monad.Trans
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
--- | An XBee device.
-data XBee m = XBee (BasicSource m CommandIn) (Sink CommandOut m ())
+
+data XBee = XBee (TChan CommandIn) (TChan CommandOut) [ThreadId]
 
 -- | Creates a new XBee device based upon a byte source and sink.
-newDevice :: (Monad m, Source src) => src m Word8 -> Sink Word8 m () -> XBee m
-newDevice src sink = XBee src' sink'
+newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
+newDevice src sink = do
+        inQ  <- newTChanIO
+        outQ <- newTChanIO
+        r <- forkReader src' inQ
+        w <- forkWriter sink' outQ
+        return $ XBee inQ outQ [r,w]
     where sink' = T.map commandToFrame =$= frameToWord8 =$ sink
           src'  = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
 
-xbeeOut :: Monad m => XBee m -> Sink CommandOut m ()
-xbeeOut (XBee _ sink) = sink
+forkReader :: Source src => src IO a -> TChan a -> IO ThreadId
+forkReader src c = forkIO body
+    where body = src $$ (tchanSink c)
 
-xbeeIn :: Monad m => XBee m -> BasicSource m CommandIn
-xbeeIn (XBee src _) = src
+forkWriter :: Sink a IO () -> TChan a -> IO ThreadId
+forkWriter sink c = forkIO body
+    where body = (tchanSource c) $$ sink
+
+tchanSink :: TChan a -> Sink a IO ()
+tchanSink c = SinkCont step (return ())
+    where step i = push i >> return (tchanSink c)
+          push i = atomically $ writeTChan c i
+
+tchanSource :: TChan a -> BasicSource2 IO a
+tchanSource c = BasicSource2 step
+    where step (SinkCont next _) = pull >>= next >>= step
+          step s@(SinkDone _)    = return s
+          pull = atomically $ readTChan c
