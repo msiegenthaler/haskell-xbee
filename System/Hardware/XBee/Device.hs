@@ -14,7 +14,6 @@ import qualified Data.ByteString as BS
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
-import Control.Monad.Trans
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
@@ -31,6 +30,7 @@ newDevice src sink = do
         return $ XBee inQ outQ [r,w]
     where sink' = T.map commandToFrame =$= frameToWord8 =$ sink
           src'  = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
+-- TODO Exception handling!
 
 forkReader :: Source src => src IO a -> TChan a -> IO ThreadId
 forkReader src c = forkIO body
