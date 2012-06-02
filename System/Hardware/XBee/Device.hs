@@ -16,12 +16,20 @@ import qualified Data.Map as Map
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Identity
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
 
-type CmdResponse = Maybe CommandIn
-type ResponseMap = Map FrameId (TMVar CmdResponse)
+data CommandResult = CRData CommandOut
+                   | CRPurged
+                   | CRTimeout deriving (Show, Eq)
+type CommandResultChan = TChan CommandResult
+
+type CommandHandler a = Sink CommandIn Identity a
+data CommandSpec r = CommandSpec (FrameId -> CommandOut) (CommandHandler r)
+
+type ResponseMap = Map FrameId CommandResultChan
 
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { inQueue  :: TChan CommandIn,
@@ -29,6 +37,9 @@ data XBee = XBee { inQueue  :: TChan CommandIn,
                    currentFrame :: TVar FrameId,
                    pending :: TVar ResponseMap,
                    threads  :: (ThreadId, ThreadId) }
+
+
+
 
 -- | Creates a new XBee device based upon a byte source and sink.
 newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
@@ -64,10 +75,10 @@ tchanSource c = BasicSource2 step
           pull = atomically $ readTChan c
 
 
-enqueue :: XBee -> (FrameId -> CommandOut) -> STM (TMVar CmdResponse)
+enqueue :: XBee -> (FrameId -> CommandOut) -> STM CommandResultChan
 enqueue x cmd = do
         f   <- reserveFrame x
-        r   <- newEmptyTMVar
+        r   <- newTChan
         pm  <- readTVar (pending x)
         pm' <- setPending pm f r
         writeTVar (pending x) pm'
@@ -80,7 +91,7 @@ reserveFrame x = let frame = currentFrame x in do
         writeTVar frame (nextFrame f)
         return f
 
-setPending :: ResponseMap -> FrameId -> TMVar CmdResponse -> STM ResponseMap
+setPending :: ResponseMap -> FrameId -> CommandResultChan -> STM ResponseMap
 setPending pm frame h = expire (Map.lookup frame pm) >> return (Map.insert frame h pm)
-        where expire (Just oh) = tryPutTMVar oh Nothing >> return ()
+        where expire (Just c) = writeTChan c CRPurged >> return ()
               expire Nothing   = return ()
