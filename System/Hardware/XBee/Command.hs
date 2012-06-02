@@ -29,6 +29,7 @@ module System.Hardware.XBee.Command (
     frameToCommand
 ) where
 
+import Numeric
 import Data.Word
 import Data.Bits
 import Data.Serialize
@@ -53,17 +54,21 @@ instance Serialize FrameId where
 
 
 -- | Address of an XBee device.
-newtype Address64 = Address64 Word64 deriving (Show, Eq)
+newtype Address64 = Address64 Word64 deriving (Eq)
 -- | Address for broadcasts to all XBee devices.
 broadcastAddress = Address64 0xFFFF
+instance Show Address64 where
+    show (Address64 a) = "Address64 0x" ++ showHex a ""
 instance Serialize Address64 where
     get = liftM Address64 getWord64be
     put (Address64 a) = putWord64be a
 
 -- | 16-bit network address of an XBee device.
-newtype Address16 = Address16 Word16 deriving (Show, Eq)
+newtype Address16 = Address16 Word16 deriving (Eq)
 -- | Address to disable 16-bit addressing.
 disabledAddress  = Address16 0xFFFE
+instance Show Address16 where
+    show (Address16 a) = "Address16 0x" ++ showHex a ""
 instance Serialize Address16 where
     get = liftM Address16 getWord16be
     put (Address16 a) = putWord16be a
