@@ -19,8 +19,11 @@ import Control.Monad
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
-type Response = Maybe CommandIn
-type ResponseMap = Map FrameId (TMVar Response)
+
+type CmdResponse = Maybe CommandIn
+type ResponseMap = Map FrameId (TMVar CmdResponse)
+
+-- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { inQueue  :: TChan CommandIn,
                    outQueue :: TChan CommandOut,
                    currentFrame :: TVar FrameId,
@@ -60,25 +63,15 @@ tchanSource c = BasicSource2 step
           step s@(SinkDone _)    = return s
           pull = atomically $ readTChan c
 
--- | Sends data to another XBee and tracks whether the transmission has been successful.
--- Blocks until the timeout has been expired or the packet has been delivered.
-send :: XBee -> XBeeAddress -> [Word8] -> STM TransmitStatus
-send x to d = enqueue x (cmd to) >>= takeTMVar >>= return . read
-    where cmd (XBeeAddress64 to) f = Transmit64 f to False False d
-          cmd (XBeeAddress16 to) f = Transmit16 f to False False d
-          read (Just (TransmitResponse _ s)) = s
-          read (Just _) = TransmitNoAck -- received non-matching answer
-          read Nothing  = TransmitNoAck
--- TODO timeout
 
-
-enqueue :: XBee -> (FrameId -> CommandOut) -> STM (TMVar Response)
+enqueue :: XBee -> (FrameId -> CommandOut) -> STM (TMVar CmdResponse)
 enqueue x cmd = do
         f   <- reserveFrame x
         r   <- newEmptyTMVar
         pm  <- readTVar (pending x)
         pm' <- setPending pm f r
         writeTVar (pending x) pm'
+        writeTChan (outQueue x) (cmd f)
         return r
 
 reserveFrame :: XBee -> STM FrameId
@@ -87,7 +80,7 @@ reserveFrame x = let frame = currentFrame x in do
         writeTVar frame (nextFrame f)
         return f
 
-setPending :: ResponseMap -> FrameId -> TMVar Response -> STM ResponseMap
+setPending :: ResponseMap -> FrameId -> TMVar CmdResponse -> STM ResponseMap
 setPending pm frame h = expire (Map.lookup frame pm) >> return (Map.insert frame h pm)
         where expire (Just oh) = tryPutTMVar oh Nothing >> return ()
               expire Nothing   = return ()
