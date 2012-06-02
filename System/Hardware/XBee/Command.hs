@@ -39,7 +39,7 @@ import Control.Applicative
 import System.Hardware.XBee.Frame
 
 
-newtype FrameId = FrameId Word8 deriving (Show, Eq)
+newtype FrameId = FrameId Word8 deriving (Show, Eq, Ord)
 -- | Don't use a FrameId.
 noFrameId = FrameId 0
 -- | Initial FrameId.
