@@ -5,6 +5,7 @@ module System.Hardware.XBee.Command (
     frameId,
     nextFrame,
     -- * Address
+    XBeeAddress(..),
     Address64(..),
     Address16(..),
     broadcastAddress,
@@ -67,6 +68,10 @@ instance Serialize Address16 where
     get = liftM Address16 getWord16be
     put (Address16 a) = putWord16be a
 
+-- | A 64- or 16-bit network address of an XBee device.
+data XBeeAddress = XBeeAddress64 Address64
+                 | XBeeAddress16 Address16
+                 deriving (Show, Eq)
 
 
 data ModemStatus = HardwareReset
