@@ -13,9 +13,11 @@ import Data.Serialize
 import qualified Data.ByteString as BS
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Time.Units
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
+import System.Timeout
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
@@ -104,6 +106,12 @@ responseHandler (SinkDone r)   _ = r
 sendCommand :: XBee -> CommandSpec a -> STM (STM a)
 sendCommand x (CommandSpec cmd rs) = enqueue x cmd >>= return . (responseHandler rs)
 
+sendCommandIO :: TimeUnit time => XBee -> CommandSpec a -> time -> IO a
+sendCommandIO x cmd tmo = send >>= withTimeout >>= unwrap cmd
+    where send = atomically $ sendCommand x cmd
+          withTimeout = timeout (fromIntegral $ toMicroseconds tmo) . atomically
+          unwrap _ (Just a) = return a
+          unwrap (CommandSpec _ rh) Nothing = atomically (feedSink rh CRTimeout >>= closeSink)
 
 
 oneResponse :: (CommandResult -> a) -> CommandHandler a
