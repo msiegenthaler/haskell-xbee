@@ -55,6 +55,8 @@ newDevice src sink = do
     where sink' = T.map commandToFrame =$= frameToWord8 =$ sink
           src'  = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
 -- TODO Exception handling!
+-- TODO add some kind of "ping" that uses frameIds, so commands timeout after approx a minute or so.
+-- TODO push the stuff in the inQueue to the pendings...
 
 forkReader :: Source src => src IO a -> TChan a -> IO ThreadId
 forkReader src c = forkIO body
