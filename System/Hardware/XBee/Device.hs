@@ -103,3 +103,20 @@ responseHandler (SinkDone r)   _ = r
 -- The "future" must be executed in a different atomically block than sendCommand itself.
 sendCommand :: XBee -> CommandSpec a -> STM (STM a)
 sendCommand x (CommandSpec cmd rs) = enqueue x cmd >>= return . (responseHandler rs)
+
+
+
+oneResponse :: (CommandResult -> a) -> CommandHandler a
+oneResponse f = SinkCont (return . SinkDone . f') (f' CRPurged)
+    where f' = return . f
+
+
+-- | Transmit a packet of data to another XBee and await an ack.
+transmit :: XBeeAddress -> [Word8] -> CommandSpec TransmitStatus
+transmit (XBeeAddress64 a) d = CommandSpec cmd (oneResponse transmitRh)
+    where cmd f = Transmit64 f a False False d
+transmit (XBeeAddress16 a) d = CommandSpec cmd (oneResponse transmitRh)
+    where cmd f = Transmit16 f a False False d
+
+transmitRh (CRData (TransmitResponse _ s)) = s
+transmitRh _ = TransmitNoAck
