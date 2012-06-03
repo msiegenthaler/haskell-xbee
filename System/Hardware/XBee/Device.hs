@@ -16,17 +16,16 @@ import qualified Data.Map as Map
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
-import Control.Monad.Identity
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
 
-data CommandResult = CRData CommandOut
+data CommandResult = CRData CommandIn
                    | CRPurged
                    | CRTimeout deriving (Show, Eq)
 type CommandResultChan = TChan CommandResult
 
-type CommandHandler a = Sink CommandIn Identity a
+type CommandHandler a = Sink CommandResult STM a
 data CommandSpec r = CommandSpec (FrameId -> CommandOut) (CommandHandler r)
 
 type ResponseMap = Map FrameId CommandResultChan
@@ -95,3 +94,12 @@ setPending :: ResponseMap -> FrameId -> CommandResultChan -> STM ResponseMap
 setPending pm frame h = expire (Map.lookup frame pm) >> return (Map.insert frame h pm)
         where expire (Just c) = writeTChan c CRPurged >> return ()
               expire Nothing   = return ()
+
+responseHandler :: CommandHandler a -> CommandResultChan -> STM a
+responseHandler (SinkCont f _) c = readTChan c >>= f >>= (flip responseHandler) c
+responseHandler (SinkDone r)   _ = r
+
+-- | Process a command and return a "STM-future" for getting the response.
+-- The "future" must be executed in a different atomically block than sendCommand itself.
+sendCommand :: XBee -> CommandSpec a -> STM (STM a)
+sendCommand x (CommandSpec cmd rs) = enqueue x cmd >>= return . (responseHandler rs)
