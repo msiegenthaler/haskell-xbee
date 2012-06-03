@@ -4,6 +4,7 @@ module System.Hardware.XBee.Command (
     noFrameId,
     frameId,
     nextFrame,
+    frameIdFor,
     -- * Address
     XBeeAddress(..),
     Address64(..),
@@ -157,6 +158,22 @@ data CommandOut = ATCommand FrameId CommandName [Word8]
                 | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
                   deriving (Show, Eq)
 
+class FrameIdContainer c where
+    frameIdFor :: c -> Maybe FrameId
+instance FrameIdContainer CommandIn where
+    frameIdFor (ModemStatusUpdate _) = Nothing
+    frameIdFor (ATCommandResponse f _ _ _) = Just f
+    frameIdFor (RemoteATCommandResponse f _ _ _ _ _) = Just f
+    frameIdFor (TransmitResponse f _) = Just f
+    frameIdFor (Receive64 _ _ _ _ _) = Nothing
+    frameIdFor (Receive16 _ _ _ _ _) = Nothing
+instance FrameIdContainer CommandOut where
+    frameIdFor (ATCommand f _ _) = Just f
+    frameIdFor (ATQueueCommand f _ _) = Just f
+    frameIdFor (RemoteATCommand64 f _ _ _ _) = Just f
+    frameIdFor (RemoteATCommand16 f _ _ _ _) = Just f
+    frameIdFor (Transmit64 f _ _ _ _) = Just f
+    frameIdFor (Transmit16 f _ _ _ _) = Just f
 
 -- | Serializes an (outgoing) command into a frame.
 commandToFrame :: CommandOut -> Frame
