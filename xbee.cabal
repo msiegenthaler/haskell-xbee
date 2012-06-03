@@ -48,7 +48,7 @@ Library
   Exposed-modules: System.Hardware.XBee.Command, System.Hardware.XBee.Frame
   
   -- Packages needed in order to build this package.
-  Build-depends: base > 4, sousit, cereal, bytestring
+  Build-depends: base > 4, sousit, cereal, bytestring, time-units
   
 
 Test-Suite command-test
