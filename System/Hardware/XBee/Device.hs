@@ -11,12 +11,15 @@ module System.Hardware.XBee.Device (
     sendCommand,
     sendCommandAndWaitIO,
     fireCommand,
-    fireCommandIO
+    fireCommandIO,
+    -- * Source
+    incomingMessageSource
 ) where
 
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.PendingFrames
+import Data.List
 import Data.Word
 import Data.Time.Units
 import Control.Concurrent
@@ -29,7 +32,7 @@ import qualified Data.SouSiT.Trans as T
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
                    outQueue  :: TChan CommandOut,
-                   subs      :: TVar [TChan CommandIn],
+                   subs      :: TChan CommandIn,
                    threads   :: (ThreadId, ThreadId, ThreadId),
                    pendingFrames :: PendingFrames }
 
@@ -39,7 +42,7 @@ newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
 newDevice src sink = do
         oq <- newTChanIO
         sq <- newTChanIO
-        ss <- newTVarIO []
+        ss <- newTChanIO
         pf <- atomically newPendingFrames
         tt <- forkIO $ runTimeouter sq oq
         tr <- forkIO $ runReadIn src pf ss
@@ -53,14 +56,12 @@ runTimeouter i o = atomically transfer >>= forkIO >> return ()
                         writeTChan o m
                         return toa
 
-runReadIn :: Source src => src IO Word8 -> PendingFrames -> TVar [TChan CommandIn] -> IO ()
+runReadIn :: Source src => src IO Word8 -> PendingFrames -> TChan CommandIn -> IO ()
 runReadIn src pf subs = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
     where sink = stmSink (processIn pf subs)
 
-processIn :: PendingFrames -> TVar [TChan CommandIn] -> CommandIn -> STM ()
-processIn pf subs msg = handleCommand pf msg >> pub
-    where pub = readTVar subs >>= mapM (flip writeTChan $ msg) >> return ()
-          handle = handleCommand
+processIn :: PendingFrames -> TChan CommandIn -> CommandIn -> STM ()
+processIn pf subs msg = handleCommand pf msg >> writeTChan subs msg
 
 runWriteOut :: (TChan CommandOut) -> Sink Word8 IO () -> IO ()
 runWriteOut c sink = src $$ T.map commandToFrame =$= frameToWord8 =$ sink
@@ -101,3 +102,12 @@ fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
 
 -- | Executes fireCommand.
 fireCommandIO x s = atomically $ fireCommand x s
+
+
+-- | Source for all incoming messages from the XBee
+incomingMessageSource :: XBee -> BasicSource2 STM CommandIn
+incomingMessageSource x = BasicSource2 first
+    where first sink = do c <- dupTChan (subs x)
+                          step c sink
+          step c (SinkCont next _) = readTChan c >>= next >>= step c
+          step c done = return done
