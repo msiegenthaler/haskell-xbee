@@ -1,13 +1,20 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
 
 module System.Hardware.XBee.Device (
     -- * Device
     XBee,
-    newDevice
+    newDevice,
+    -- * Commands
+    FrameCmdSpec(..),
+    FramelessCmdSpec(..),
+    resultGet,
+    sendCommand,
+    fireCommand
 ) where
 
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
+import System.Hardware.XBee.PendingFrames
 import Data.Word
 import Data.Serialize
 import qualified Data.ByteString as BS
@@ -22,49 +29,39 @@ import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
 
-data CommandResult = CRData CommandIn
-                   | CRPurged
-                   | CRTimeout deriving (Show, Eq)
-type CommandResultChan = TChan CommandResult
-
-type CommandHandler a = Sink CommandResult STM a
-data CommandSpec r = CommandSpec (FrameId -> CommandOut) (CommandHandler r)
-
-type ResponseMap = Map FrameId CommandResultChan
-
 -- | Opaque representation of the locally attached XBee device.
-data XBee = XBee { inQueue  :: TChan CommandIn,
-                   outQueue :: TChan CommandOut,
-                   currentFrame :: TVar FrameId,
-                   pending :: TVar ResponseMap,
-                   threads  :: (ThreadId, ThreadId) }
-
-
+data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
+                   outQueue  :: TChan CommandOut,
+                   inQueue   :: TChan CommandIn,
+                   threads   :: (ThreadId, ThreadId, ThreadId),
+                   pendingFrames :: PendingFrames }
 
 
 -- | Creates a new XBee device based upon a byte source and sink.
 newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
 newDevice src sink = do
-        inQ  <- newTChanIO
-        outQ <- newTChanIO
-        f <- newTVarIO frameId
-        p <- newTVarIO Map.empty
-        r <- forkReader src' inQ
-        w <- forkWriter sink' outQ
-        return $ XBee inQ outQ f p (r,w)
-    where sink' = T.map commandToFrame =$= frameToWord8 =$ sink
-          src'  = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
--- TODO Exception handling!
--- TODO add some kind of "ping" that uses frameIds, so commands timeout after approx a minute or so.
--- TODO push the stuff in the inQueue to the pendings...
+        iq <- newTChanIO
+        oq <- newTChanIO
+        sq <- newTChanIO
+        tt <- forkIO $ runTimeouter sq oq
+        tr <- forkIO $ runReadIn src iq
+        tw <- forkIO $ runWriteOut oq sink
+        pf <- atomically newPendingFrames
+        return $ XBee sq oq iq (tr,tt,tw) pf
 
-forkReader :: Source src => src IO a -> TChan a -> IO ThreadId
-forkReader src c = forkIO body
-    where body = src $$ (tchanSink c)
+runTimeouter :: TChan (CommandOut,IO ()) -> TChan CommandOut -> IO ()
+runTimeouter i o = atomically transfer >>= forkIO >> return ()
+    where transfer = do (m, toa) <- readTChan i
+                        writeTChan o m
+                        return toa
 
-forkWriter :: Sink a IO () -> TChan a -> IO ThreadId
-forkWriter sink c = forkIO body
-    where body = (tchanSource c) $$ sink
+runReadIn :: Source src => src IO Word8 -> (TChan CommandIn) -> IO ()
+runReadIn src c = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
+    where sink = tchanSink c
+
+runWriteOut :: (TChan CommandOut) -> Sink Word8 IO () -> IO ()
+runWriteOut c sink = src $$ T.map commandToFrame =$= frameToWord8 =$ sink
+    where src = tchanSource c
 
 tchanSink :: TChan a -> Sink a IO ()
 tchanSink c = SinkCont step (return ())
@@ -78,55 +75,19 @@ tchanSource c = BasicSource2 step
           pull = atomically $ readTChan c
 
 
-enqueue :: XBee -> (FrameId -> CommandOut) -> STM CommandResultChan
-enqueue x cmd = do
-        f   <- reserveFrame x
-        r   <- newTChan
-        pm  <- readTVar (pending x)
-        pm' <- setPending pm f r
-        writeTVar (pending x) pm'
-        writeTChan (outQueue x) (cmd f)
+data FrameCmdSpec a   = FrameCmdSpec (FrameId -> CommandOut) (CommandHandler a)
+data FramelessCmdSpec = FramelessCmdSpec CommandOut
+
+-- | Process a command and return a "future" for getting the response.
+-- The result is read using resultGet in a different atomically than the sendCommand.
+sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (XBeeResult a)
+sendCommand x (FrameCmdSpec cmd ch) tmo = do
+        (fid, r) <- enqueue (pendingFrames x) ch
+        writeTChan (sendQueue x) (cmd fid,timeout r)
         return r
+    where timeout r = threadDelay (tmous) >> (atomically $ resultTimeout r)
+          tmous = fromIntegral $ toMicroseconds tmo
 
-reserveFrame :: XBee -> STM FrameId
-reserveFrame x = let frame = currentFrame x in do
-        f <- readTVar frame
-        writeTVar frame (nextFrame f)
-        return f
-
-setPending :: ResponseMap -> FrameId -> CommandResultChan -> STM ResponseMap
-setPending pm frame h = expire (Map.lookup frame pm) >> return (Map.insert frame h pm)
-        where expire (Just c) = writeTChan c CRPurged >> return ()
-              expire Nothing   = return ()
-
-responseHandler :: CommandHandler a -> CommandResultChan -> STM a
-responseHandler (SinkCont f _) c = readTChan c >>= f >>= (flip responseHandler) c
-responseHandler (SinkDone r)   _ = r
-
--- | Process a command and return a "STM-future" for getting the response.
--- The "future" must be executed in a different atomically block than sendCommand itself.
-sendCommand :: XBee -> CommandSpec a -> STM (STM a)
-sendCommand x (CommandSpec cmd rs) = enqueue x cmd >>= return . (responseHandler rs)
-
-sendCommandIO :: TimeUnit time => XBee -> CommandSpec a -> time -> IO a
-sendCommandIO x cmd tmo = send >>= withTimeout >>= unwrap cmd
-    where send = atomically $ sendCommand x cmd
-          withTimeout = timeout (fromIntegral $ toMicroseconds tmo) . atomically
-          unwrap _ (Just a) = return a
-          unwrap (CommandSpec _ rh) Nothing = atomically (feedSink rh CRTimeout >>= closeSink)
-
-
-oneResponse :: (CommandResult -> a) -> CommandHandler a
-oneResponse f = SinkCont (return . SinkDone . f') (f' CRPurged)
-    where f' = return . f
-
-
--- | Transmit a packet of data to another XBee and await an ack.
-transmit :: XBeeAddress -> [Word8] -> CommandSpec TransmitStatus
-transmit (XBeeAddress64 a) d = CommandSpec cmd (oneResponse transmitRh)
-    where cmd f = Transmit64 f a False False d
-transmit (XBeeAddress16 a) d = CommandSpec cmd (oneResponse transmitRh)
-    where cmd f = Transmit16 f a False False d
-
-transmitRh (CRData (TransmitResponse _ s)) = s
-transmitRh _ = TransmitNoAck
+-- | Sends a command without checking for a response.
+fireCommand :: XBee -> FramelessCmdSpec -> STM ()
+fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
