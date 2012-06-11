@@ -34,7 +34,7 @@ import qualified Data.SouSiT.Trans as T
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
                    outQueue  :: TChan CommandOut,
-                   inQueue   :: TChan CommandIn,
+                   subs      :: TVar [TChan CommandIn],
                    threads   :: (ThreadId, ThreadId, ThreadId),
                    pendingFrames :: PendingFrames }
 
@@ -42,14 +42,15 @@ data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
 -- | Creates a new XBee device based upon a byte source and sink.
 newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
 newDevice src sink = do
-        iq <- newTChanIO
         oq <- newTChanIO
         sq <- newTChanIO
-        tt <- forkIO $ runTimeouter sq oq
-        tr <- forkIO $ runReadIn src iq
-        tw <- forkIO $ runWriteOut oq sink
+        ss <- newTVarIO []
         pf <- atomically newPendingFrames
-        return $ XBee sq oq iq (tr,tt,tw) pf
+        tt <- forkIO $ runTimeouter sq oq
+        tr <- forkIO $ runReadIn src pf ss
+        tw <- forkIO $ runWriteOut oq sink
+        return $ XBee sq oq ss (tr,tt,tw) pf
+
 
 runTimeouter :: TChan (CommandOut,IO ()) -> TChan CommandOut -> IO ()
 runTimeouter i o = atomically transfer >>= forkIO >> return ()
@@ -57,24 +58,29 @@ runTimeouter i o = atomically transfer >>= forkIO >> return ()
                         writeTChan o m
                         return toa
 
-runReadIn :: Source src => src IO Word8 -> (TChan CommandIn) -> IO ()
-runReadIn src c = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
-    where sink = tchanSink c
+runReadIn :: Source src => src IO Word8 -> PendingFrames -> TVar [TChan CommandIn] -> IO ()
+runReadIn src pf subs = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
+    where sink = stmSink (processIn pf subs)
+
+processIn :: PendingFrames -> TVar [TChan CommandIn] -> CommandIn -> STM ()
+processIn pf subs msg = handleCommand pf msg >> pub
+    where pub = readTVar subs >>= mapM (flip writeTChan $ msg) >> return ()
+          handle = handleCommand
 
 runWriteOut :: (TChan CommandOut) -> Sink Word8 IO () -> IO ()
 runWriteOut c sink = src $$ T.map commandToFrame =$= frameToWord8 =$ sink
     where src = tchanSource c
 
-tchanSink :: TChan a -> Sink a IO ()
-tchanSink c = SinkCont step (return ())
-    where step i = push i >> return (tchanSink c)
-          push i = atomically $ writeTChan c i
+stmSink :: (a -> STM ()) -> Sink a IO ()
+stmSink f = SinkCont step (return ())
+    where step i = atomically (f i) >> return (stmSink f)
 
 tchanSource :: TChan a -> BasicSource2 IO a
 tchanSource c = BasicSource2 step
     where step (SinkCont next _) = pull >>= next >>= step
           step s@(SinkDone _)    = return s
           pull = atomically $ readTChan c
+
 
 
 data FrameCmdSpec a   = FrameCmdSpec (FrameId -> CommandOut) (CommandHandler a)
