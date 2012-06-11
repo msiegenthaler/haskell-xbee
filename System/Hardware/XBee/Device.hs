@@ -18,15 +18,10 @@ import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.PendingFrames
 import Data.Word
-import Data.Serialize
-import qualified Data.ByteString as BS
-import Data.Map (Map)
-import qualified Data.Map as Map
 import Data.Time.Units
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
-import System.Timeout
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
