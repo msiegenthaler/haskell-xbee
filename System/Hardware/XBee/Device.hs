@@ -9,7 +9,9 @@ module System.Hardware.XBee.Device (
     FramelessCmdSpec(..),
     resultGet,
     sendCommand,
-    fireCommand
+    sendCommandAndWaitIO,
+    fireCommand,
+    fireCommandIO
 ) where
 
 import System.Hardware.XBee.Frame
@@ -88,6 +90,13 @@ sendCommand x (FrameCmdSpec cmd ch) tmo = do
     where timeout r = threadDelay (tmous) >> (atomically $ resultTimeout r)
           tmous = fromIntegral $ toMicroseconds tmo
 
+-- | Executes sendCommand and resultGet together.
+sendCommandAndWaitIO x cmd t = atomically send >>= atomically . resultGet
+    where send = sendCommand x cmd t
+
 -- | Sends a command without checking for a response.
 fireCommand :: XBee -> FramelessCmdSpec -> STM ()
 fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
+
+-- | Executes fireCommand.
+fireCommandIO x s = atomically $ fireCommand x s
