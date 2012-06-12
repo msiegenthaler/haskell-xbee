@@ -15,7 +15,11 @@ module System.Hardware.XBee.Device (
     -- * Source
     rawInSource,
     rawInSourceSTM,
-    rawInSourceIO
+    rawInSourceIO,
+    ReceivedMessage(..),
+    messagesSource,
+    messagesSourceSTM,
+    messagesSourceIO
 ) where
 
 import System.Hardware.XBee.Frame
@@ -107,7 +111,7 @@ fireCommandIO x s = atomically $ fireCommand x s
 
 
 
--- | Source for all incoming messages from the XBee. This includes replies to framed command
+-- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by sendCommand.
 rawInSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource2 m CommandIn
 rawInSource mf x = BasicSource2 first
@@ -120,3 +124,28 @@ rawInSourceSTM = rawInSource id
 
 -- | IO version of rawInSource.
 rawInSourceIO = rawInSource atomically
+
+
+-- | An incoming message (abstracts over Receive64 and Receive16)
+data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
+                                         signal :: SignalStrength,
+                                         addressBroadcast :: Bool,
+                                         panBroadcast :: Bool,
+                                         messageBody :: [Word8] }
+
+-- Transformer for CommandIn into ReceivedMessage.
+commandInToReceivedMessage :: Transform CommandIn ReceivedMessage
+commandInToReceivedMessage = ContTransform step []
+    where step (Receive16 se si ab pb d) = ([ReceivedMessage (XBeeAddress16 se) si ab pb d], commandInToReceivedMessage)
+          step (Receive64 se si ab pb d) = ([ReceivedMessage (XBeeAddress64 se) si ab pb d], commandInToReceivedMessage)
+          step _ = ([], commandInToReceivedMessage)
+
+-- | Source for all messages received from remote XBees (Receive16 and Receive64).
+messagesSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource m ReceivedMessage
+messagesSource mf x = rawInSource mf x $= commandInToReceivedMessage
+
+-- | STM version of messagesSource
+messagesSourceSTM = messagesSource id
+
+-- | IO version of messagesSource
+messagesSourceIO = messagesSource atomically
