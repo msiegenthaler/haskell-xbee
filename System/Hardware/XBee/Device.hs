@@ -57,7 +57,7 @@ newDevice src sink = do
         tr <- forkIO $ runReadIn src pf ss
         tw <- forkIO $ runWriteOut oq sink
         return $ XBee sq oq ss (tr,tt,tw) pf
-
+-- TODO exception handling!
 
 runTimeouter :: TChan (CommandOut,IO ()) -> TChan CommandOut -> IO ()
 runTimeouter i o = atomically transfer >>= forkIO >> return ()
