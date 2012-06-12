@@ -7,6 +7,7 @@ module System.Hardware.XBee.Device (
     -- * Commands
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
+    XBeeResult,
     resultGet,
     sendCommand,
     sendCommandAndWaitIO,

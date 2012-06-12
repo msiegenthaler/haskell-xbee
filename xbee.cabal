@@ -45,10 +45,11 @@ Cabal-version:       >= 1.9.2
 
 Library
   -- Modules exported by the library.
-  Exposed-modules: System.Hardware.XBee.Command, System.Hardware.XBee.Frame
+  Exposed-modules: System.Hardware.XBee.Command, System.Hardware.XBee.Frame,
+                   System.Hardware.XBee.Device
   
   -- Packages needed in order to build this package.
-  Build-depends: base > 4, sousit, cereal, bytestring, time-units
+  Build-depends: base > 4, sousit, cereal, bytestring, time-units, stm
   
 
 Test-Suite command-test
