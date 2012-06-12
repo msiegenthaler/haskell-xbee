@@ -106,8 +106,10 @@ fireCommandIO x s = atomically $ fireCommand x s
 
 -- | Source for all incoming messages from the XBee
 incomingMessageSource :: XBee -> BasicSource2 STM CommandIn
-incomingMessageSource x = BasicSource2 first
-    where first sink = do c <- dupTChan (subs x)
-                          step c sink
-          step c (SinkCont next _) = readTChan c >>= next >>= step c
+incomingMessageSource = rawInSource id
+
+rawInSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource2 m CommandIn
+rawInSource mf x = BasicSource2 first
+    where first sink = mf (dupTChan (subs x)) >>= (flip step) sink
+          step c (SinkCont next _) = mf (readTChan c) >>= next >>= step c
           step c done = return done
