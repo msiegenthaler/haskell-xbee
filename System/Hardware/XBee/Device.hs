@@ -13,7 +13,9 @@ module System.Hardware.XBee.Device (
     fireCommand,
     fireCommandIO,
     -- * Source
-    incomingMessageSource
+    rawInSource,
+    rawInSourceSTM,
+    rawInSourceIO
 ) where
 
 import System.Hardware.XBee.Frame
@@ -104,12 +106,17 @@ fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
 fireCommandIO x s = atomically $ fireCommand x s
 
 
--- | Source for all incoming messages from the XBee
-incomingMessageSource :: XBee -> BasicSource2 STM CommandIn
-incomingMessageSource = rawInSource id
 
+-- | Source for all incoming messages from the XBee. This includes replies to framed command
+-- that are also handled by sendCommand.
 rawInSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource2 m CommandIn
 rawInSource mf x = BasicSource2 first
     where first sink = mf (dupTChan (subs x)) >>= (flip step) sink
           step c (SinkCont next _) = mf (readTChan c) >>= next >>= step c
           step c done = return done
+
+-- | STM version of rawInSource.
+rawInSourceSTM = rawInSource id
+
+-- | IO version of rawInSource.
+rawInSourceIO = rawInSource atomically
