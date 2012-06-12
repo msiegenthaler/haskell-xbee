@@ -19,7 +19,10 @@ module System.Hardware.XBee.Device (
     ReceivedMessage(..),
     messagesSource,
     messagesSourceSTM,
-    messagesSourceIO
+    messagesSourceIO,
+    modemStatusSource,
+    modemStatusSourceSTM,
+    modemStatusSourceIO
 ) where
 
 import System.Hardware.XBee.Frame
@@ -135,10 +138,10 @@ data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
 
 -- Transformer for CommandIn into ReceivedMessage.
 commandInToReceivedMessage :: Transform CommandIn ReceivedMessage
-commandInToReceivedMessage = ContTransform step []
-    where step (Receive16 se si ab pb d) = ([ReceivedMessage (XBeeAddress16 se) si ab pb d], commandInToReceivedMessage)
-          step (Receive64 se si ab pb d) = ([ReceivedMessage (XBeeAddress64 se) si ab pb d], commandInToReceivedMessage)
-          step _ = ([], commandInToReceivedMessage)
+commandInToReceivedMessage = T.filterMap step
+    where step (Receive16 se si ab pb d) = Just $ ReceivedMessage (XBeeAddress16 se) si ab pb d
+          step (Receive64 se si ab pb d) = Just $ ReceivedMessage (XBeeAddress64 se) si ab pb d
+          step _ = Nothing
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
 messagesSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource m ReceivedMessage
@@ -149,3 +152,19 @@ messagesSourceSTM = messagesSource id
 
 -- | IO version of messagesSource
 messagesSourceIO = messagesSource atomically
+
+
+-- | Source for modem status updates.
+modemStatusSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource m ModemStatus
+modemStatusSource mf x = rawInSource mf x $= commandInToModemStatus
+
+commandInToModemStatus :: Transform CommandIn ModemStatus
+commandInToModemStatus = T.filterMap step
+    where step (ModemStatusUpdate s) = Just s
+          step _ = Nothing
+
+-- | STM version of modemStatusSource
+modemStatusSourceSTM = modemStatusSource id
+
+-- | IO version of modemStatusSource
+modemStatusSourceIO = modemStatusSource atomically
