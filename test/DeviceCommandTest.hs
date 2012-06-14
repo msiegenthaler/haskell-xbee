@@ -15,7 +15,9 @@ import System.Hardware.XBee.Command
 import System.Hardware.XBee.DeviceCommand as C
 
 
-process s v = runIdentity (feedSink s v >>= closeSink)
+process s v = runIdentity (feedSink s v >>= expectDone)
+    where expectDone (SinkDone r) = r
+          expectDone _ = error "Sink not done"
 
 sendWithTimeoutIsNoAck a d = let (FrameCmdSpec _ h) = C.send a d in
         process h CRTimeout == TransmitNoAck
