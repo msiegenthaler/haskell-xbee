@@ -19,28 +19,30 @@ process s v = runIdentity (feedSink s v >>= expectDone)
     where expectDone (SinkDone r) = r
           expectDone _ = error "Sink not done"
 
-sendWithTimeoutIsNoAck a d = let (FrameCmdSpec _ h) = C.send a d in
-        process h CRTimeout == TransmitNoAck
+runHandler cmd d = let (FrameCmdSpec _ h) = cmd in process h d
+runHandler' cmd d = runHandler cmd (CRData d)
 
-sendWithPurgeIsNoAck a d = let (FrameCmdSpec _ h) = C.send a d in
-        process h CRPurged == TransmitNoAck
+sendWithTimeoutIsNoAck a d = runHandler (C.send a d) CRTimeout == TransmitNoAck
 
-sendWithTransmitStatusIsStatus a d f s = let (FrameCmdSpec _ h) = C.send a d in
-        process h (CRData (TransmitResponse f s)) == s
+sendWithPurgeIsNoAck a d = runHandler (C.send a d) CRPurged == TransmitNoAck
+
+sendWithTransmitStatusIsStatus a d f s = runHandler' (C.send a d) (TransmitResponse f s) == s
 
 
+runAtHandler dest req = runHandler (C.atCommand dest req)
+runAtHandler' dest req resp = runAtHandler dest req (CRData resp)
 
-atCommandLocal cn d f s out = let (FrameCmdSpec _ h) = C.atCommand Local (ATRequest cn d) in
-        process h (CRData (ATCommandResponse f cn s out)) == ATResponse s out
+atCommandLocal cn d f s out =
+    runAtHandler' Local (ATRequest cn d) (ATCommandResponse f cn s out) == ATResponse s out
 
-atCommandLocalTimeout cn d = let (FrameCmdSpec _ h) = C.atCommand Local (ATRequest cn d) in
-        process h CRTimeout == ATResponse CmdError []
+atCommandLocalTimeout cn d =
+    runAtHandler Local (ATRequest cn d) CRTimeout == ATResponse CmdError []
 
-atCommandLocalPurge cn d = let (FrameCmdSpec _ h) = C.atCommand Local (ATRequest cn d) in
-        process h CRPurged == ATResponse CmdError []
+atCommandLocalPurge cn d =
+    runAtHandler Local (ATRequest cn d) CRPurged == ATResponse CmdError []
 
-atCommandRemote a cn d f s out = let (FrameCmdSpec _ h) = C.atCommand (Remote a) (ATRequest cn d) in
-        process h (CRData (RemoteATCommandResponse f a64 a16 cn s out)) == ATResponse s out
+atCommandRemote a cn d f s out = runAtHandler' (Remote a) (ATRequest cn d) 
+        (RemoteATCommandResponse f a64 a16 cn s out) == ATResponse s out
     where a16 = case a of
                     (XBeeAddress16 a') -> a'
                     _ -> disabledAddress
@@ -48,11 +50,14 @@ atCommandRemote a cn d f s out = let (FrameCmdSpec _ h) = C.atCommand (Remote a)
                     (XBeeAddress64 a') -> a'
                     _ -> broadcastAddress
 
-atCommandRemoteTimeout a cn d = let (FrameCmdSpec _ h) = C.atCommand (Remote a) (ATRequest cn d) in
-        process h CRTimeout == ATResponse CmdError []
+atCommandRemoteTimeout a cn d =
+    runAtHandler (Remote a) (ATRequest cn d) CRTimeout == ATResponse CmdError []
 
-atCommandRemotePurge a cn d = let (FrameCmdSpec _ h) = C.atCommand (Remote a) (ATRequest cn d) in
-        process h CRPurged == ATResponse CmdError []
+atCommandRemotePurge a cn d =
+    runAtHandler (Remote a) (ATRequest cn d) CRPurged == ATResponse CmdError []
+
+
+
 
 
 
