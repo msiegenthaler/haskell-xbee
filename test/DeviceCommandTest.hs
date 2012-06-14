@@ -19,7 +19,7 @@ process s v = runIdentity (feedSink s v >>= expectDone)
     where expectDone (SinkDone r) = r
           expectDone _ = error "Sink not done"
 
-runHandler cmd d = let (FrameCmdSpec _ h) = cmd in process h d
+runHandler (FrameCmdSpec _ h) d = process h d
 runHandler' cmd d = runHandler cmd (CRData d)
 
 sendWithTimeoutIsNoAck a d = runHandler (C.send a d) CRTimeout == TransmitNoAck
@@ -57,7 +57,22 @@ atCommandRemotePurge a cn d =
     runAtHandler (Remote a) (ATRequest cn d) CRPurged == ATResponse CmdError []
 
 
+instance Arbitrary ATDestination where
+    arbitrary = arbitrary >>= create
+        where create True = return Local
+              create False = liftM Remote arbitrary
 
+
+runAtOk :: FrameId -> FrameCmdSpec a -> [Word8] -> a
+runAtOk frameId (FrameCmdSpec cmd h) d = case ic of
+        (ATCommand f cn _)             -> result $ ATCommandResponse f cn CmdOK d
+        (RemoteATCommand16 f a _ cn _) -> result $ RemoteATCommandResponse f broadcastAddress a cn CmdOK d
+        (RemoteATCommand64 f a _ cn _) -> result $ RemoteATCommandResponse f a disabledAddress cn CmdOK d
+    where ic = cmd frameId
+          result = process h . CRData
+
+
+atMyReadValid f dst = runAtOk f (C.getAddress16 dst) [0x21, 0x0E] == Right (Address16 0x210E)
 
 
 
@@ -78,5 +93,8 @@ tests = [
             testProperty "remote with a ATCommandResponse has data and status" atCommandRemote,
             testProperty "remote with Timeout is CmdError and no data" atCommandRemotePurge,
             testProperty "remote with Purged is CmdError and no data" atCommandRemotePurge
+        ],
+        testGroup "AT MY" [
+            testProperty "getAddress16 should return the address on valid responses" atMyReadValid
         ]
     ]

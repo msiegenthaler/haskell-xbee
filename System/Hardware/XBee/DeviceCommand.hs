@@ -13,11 +13,16 @@ module System.Hardware.XBee.DeviceCommand (
     ATRequest(..),
     ATResponse(..),
     ATDestination(..),
-    atCommand
+    atCommand,
+    -- ** Specific AT Commands
+    getAddress16
 ) where
 
 import Data.Word
 import Data.SouSiT
+import Data.Serialize
+import qualified Data.ByteString as BS
+import Control.Applicative
 import Control.Monad.Identity
 import System.Hardware.XBee.Command
 
@@ -32,6 +37,8 @@ type CommandHandler a = Sink CommandResponse Identity a
 
 -- | A command that expects an answer from the XBee.
 data FrameCmdSpec a   = FrameCmdSpec (FrameId -> CommandOut) (CommandHandler a)
+instance Functor FrameCmdSpec where
+    fmap f (FrameCmdSpec a handler) = FrameCmdSpec a (fmap f handler)
 
 -- | A command that is sent without checking for an answer. Use noFrameId if the CommandOut
 --   supports frames.
@@ -65,6 +72,9 @@ broadcast d = FramelessCmdSpec $ transmit noFrameId (XBeeAddress64 broadcastAddr
 
 
 data ATRequest = ATRequest CommandName [Word8] deriving (Eq, Show)
+atRequest c1 c2 d = ATRequest (commandName c1 c2) d
+atRequestGet c1 c2 = atRequest c1 c2 []
+
 data ATResponse = ATResponse CommandStatus [Word8] deriving (Eq, Show)
 
 data ATDestination = Local
@@ -84,3 +94,18 @@ atCommand (Remote a) (ATRequest cn d) = FrameCmdSpec (cmd a) (singleAnswer handl
           handler _ = atCommandFailed
 
 atCommandFailed = ATResponse CmdError []
+
+
+type FrameCmdSpecAT a = FrameCmdSpec (Either String a)
+
+parseAtResponse :: Serialize a => ATResponse -> Either String a
+parseAtResponse (ATResponse CmdOK d) = runGet get (BS.pack d)
+parseAtResponse (ATResponse CmdInvalidCommand _) = Left "invalid command"
+parseAtResponse (ATResponse CmdInvalidParameter _) = Left "invalid parameter"
+parseAtResponse (ATResponse CmdError _) = Left "error executing the command"
+
+parseAt = fmap parseAtResponse
+
+-- | Gets the 16-bit source address.
+getAddress16 :: ATDestination -> FrameCmdSpecAT Address16
+getAddress16 a = parseAt $ atCommand a (atRequestGet 'M' 'Y')
