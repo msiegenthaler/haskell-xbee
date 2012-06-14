@@ -8,7 +8,12 @@ module System.Hardware.XBee.DeviceCommand (
     -- ** Sending
     send,
     sendNoAck,
-    broadcast
+    broadcast,
+    -- ** Generic AT
+    ATRequest(..),
+    ATResponse(..),
+    ATDestination(..),
+    atCommand
 ) where
 
 import Data.Word
@@ -57,3 +62,25 @@ sendNoAck a d = FramelessCmdSpec $ transmit noFrameId a True False d
 -- | Broadcasts up to 100 bytes to all XBees within the same network.
 broadcast :: [Word8] -> FramelessCmdSpec
 broadcast d = FramelessCmdSpec $ transmit noFrameId (XBeeAddress64 broadcastAddress) True True d
+
+
+data ATRequest = ATRequest CommandName [Word8] deriving (Eq, Show)
+data ATResponse = ATResponse CommandStatus [Word8] deriving (Eq, Show)
+
+data ATDestination = Local
+                   | Remote XBeeAddress deriving (Eq, Show)
+
+-- | Generic implementation for the handling of ATCommands with a single response and immediate
+--   application.
+atCommand :: ATDestination -> ATRequest -> FrameCmdSpec ATResponse
+atCommand Local (ATRequest cn d) = FrameCmdSpec cmd (singleAnswer handler atCommandFailed)
+    where cmd f = ATCommand f cn d
+          handler (ATCommandResponse _ _ s out) = ATResponse s out
+          handler _ = atCommandFailed
+atCommand (Remote a) (ATRequest cn d) = FrameCmdSpec (cmd a) (singleAnswer handler atCommandFailed)
+    where cmd (XBeeAddress64 a64) f = RemoteATCommand64 f a64 True cn d
+          cmd (XBeeAddress16 a16) f = RemoteATCommand16 f a16 True cn d
+          handler (RemoteATCommandResponse _ _ _ _ s out) = ATResponse s out
+          handler _ = atCommandFailed
+
+atCommandFailed = ATResponse CmdError []
