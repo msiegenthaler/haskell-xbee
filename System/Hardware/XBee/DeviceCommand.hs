@@ -5,7 +5,10 @@ module System.Hardware.XBee.DeviceCommand (
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
     -- * Commands
-    send
+    -- ** Sending
+    send,
+    sendNoAck,
+    broadcast
 ) where
 
 import Data.Word
@@ -36,10 +39,21 @@ singleAnswer f failValue = SinkCont step (return failValue)
           step _          = return $ SinkDone (return failValue)
 
 
--- Sends up to 100 bytes to another XBee.
+transmit f (XBeeAddress64 a) noack bdcst d = Transmit64 f a noack bdcst (take 100 d)
+transmit f (XBeeAddress16 a) noack bdcst d = Transmit16 f a noack bdcst (take 100 d)
+
+-- | Sends up to 100 bytes to another XBee and requests an ack.
 send :: XBeeAddress -> [Word8] -> FrameCmdSpec TransmitStatus
-send to d = FrameCmdSpec (cmd to) (singleAnswer handler TransmitNoAck)
-    where cmd (XBeeAddress64 to) f = Transmit64 f to False False (take 100 d)
-          cmd (XBeeAddress16 to) f = Transmit16 f to False False (take 100 d)
+send to d = FrameCmdSpec cmd (singleAnswer handler TransmitNoAck)
+    where cmd f = transmit f to False False d
           handler (TransmitResponse _ r) = r
           handler _ = TransmitNoAck
+
+-- | Sends up to 100 bytes to another XBee without requesting an acknowledgement. There
+--   is no way to tell whether the transmission succeeded or not.
+sendNoAck :: XBeeAddress -> [Word8] -> FramelessCmdSpec
+sendNoAck a d = FramelessCmdSpec $ transmit noFrameId a True False d
+
+-- | Broadcasts up to 100 bytes to all XBees within the same network.
+broadcast :: [Word8] -> FramelessCmdSpec
+broadcast d = FramelessCmdSpec $ transmit noFrameId (XBeeAddress64 broadcastAddress) True True d
