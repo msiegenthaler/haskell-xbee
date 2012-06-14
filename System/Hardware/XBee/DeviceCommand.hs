@@ -15,7 +15,8 @@ module System.Hardware.XBee.DeviceCommand (
     ATDestination(..),
     atCommand,
     -- ** Specific AT Commands
-    getAddress16
+    getAddress16,
+    setAddress16
 ) where
 
 import Data.Word
@@ -74,6 +75,9 @@ broadcast d = FramelessCmdSpec $ transmit noFrameId (XBeeAddress64 broadcastAddr
 data ATRequest = ATRequest CommandName [Word8] deriving (Eq, Show)
 atRequest c1 c2 d = ATRequest (commandName c1 c2) d
 atRequestGet c1 c2 = atRequest c1 c2 []
+atRequestSer c1 c2 s = atRequest c1 c2 (serialize s)
+    where serialize = BS.unpack . runPut . put
+
 
 data ATResponse = ATResponse CommandStatus [Word8] deriving (Eq, Show)
 
@@ -98,14 +102,23 @@ atCommandFailed = ATResponse CmdError []
 
 type FrameCmdSpecAT a = FrameCmdSpec (Either String a)
 
-parseAtResponse :: Serialize a => ATResponse -> Either String a
-parseAtResponse (ATResponse CmdOK d) = runGet get (BS.pack d)
-parseAtResponse (ATResponse CmdInvalidCommand _) = Left "invalid command"
-parseAtResponse (ATResponse CmdInvalidParameter _) = Left "invalid parameter"
-parseAtResponse (ATResponse CmdError _) = Left "error executing the command"
+atResponse :: ATResponse -> Either String [Word8]
+atResponse (ATResponse CmdOK d) = Right d
+atResponse (ATResponse CmdInvalidCommand _) = Left "invalid command"
+atResponse (ATResponse CmdInvalidParameter _) = Left "invalid parameter"
+atResponse (ATResponse CmdError _) = Left "error executing the command"
+
+parseAtResponse :: Serialize s => ATResponse -> Either String s
+parseAtResponse d = atResponse d >>= runGet get . BS.pack
 
 parseAt = fmap parseAtResponse
 
+discardData = fmap (fmap (\i -> ()) atResponse)
+
 -- | Gets the 16-bit source address.
 getAddress16 :: ATDestination -> FrameCmdSpecAT Address16
-getAddress16 a = parseAt $ atCommand a (atRequestGet 'M' 'Y')
+getAddress16 dst = parseAt $ atCommand dst (atRequestGet 'M' 'Y')
+
+-- | Sets the 16-bit source address.
+setAddress16 :: ATDestination -> Address16 -> FrameCmdSpec ()
+setAddress16 dst a = discardData $ atCommand dst (atRequestSer 'M' 'Y' a)

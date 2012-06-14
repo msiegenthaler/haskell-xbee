@@ -74,6 +74,8 @@ runAtOk frameId (FrameCmdSpec cmd h) d = case ic of
 
 atMyReadValid f dst = runAtOk f (C.getAddress16 dst) [0x21, 0x0E] == Right (Address16 0x210E)
 
+atMyWriteValid f = (cmd f) == ATCommand f (commandName 'M' 'Y') [0x33, 0x21]
+    where (FrameCmdSpec cmd _) = C.setAddress16 Local (Address16 0x3321)
 
 
 --Main
@@ -95,6 +97,7 @@ tests = [
             testProperty "remote with Purged is CmdError and no data" atCommandRemotePurge
         ],
         testGroup "AT MY" [
-            testProperty "getAddress16 should return the address on valid responses" atMyReadValid
+            testProperty "getAddress16 should return the address on valid responses" atMyReadValid,
+            testProperty "setAddress16 should write the address to the request" atMyWriteValid
         ]
     ]
