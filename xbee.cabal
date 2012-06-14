@@ -49,7 +49,7 @@ Library
                    System.Hardware.XBee.Device
   
   -- Packages needed in order to build this package.
-  Build-depends: base > 4, sousit, cereal, bytestring, time-units, stm
+  Build-depends: base > 4, sousit, cereal, bytestring, time-units, stm, mtl
   
 
 Test-Suite command-test

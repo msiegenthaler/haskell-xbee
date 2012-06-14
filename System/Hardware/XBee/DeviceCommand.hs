@@ -4,6 +4,8 @@ module System.Hardware.XBee.DeviceCommand (
     CommandResponse(..),
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
+    -- * Commands
+    send
 ) where
 
 import Data.Word
