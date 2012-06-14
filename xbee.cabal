@@ -57,4 +57,11 @@ Test-Suite command-test
   Hs-source-dirs: test
   Main-Is: CommandTest.hs
   Build-Depends: base > 4, mtl, xbee, cereal, bytestring,
-                 QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9  
+                 QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9
+
+Test-Suite devicecommand-test
+  Type: exitcode-stdio-1.0
+  Hs-source-dirs: test
+  Main-Is: DeviceCommandTest.hs
+  Build-Depends: base > 4, mtl, xbee, cereal, bytestring,
+                 QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9

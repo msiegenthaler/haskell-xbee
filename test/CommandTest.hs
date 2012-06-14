@@ -5,6 +5,7 @@ module Main (main) where
 import Test.QuickCheck
 import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
+import Test.XBeeTestSupport
 
 import Data.Word
 import Data.Serialize
@@ -30,26 +31,12 @@ frameIdSerializeParse v = serParseTest (frameForId v)
 
 frameIdParseWord8 w = runGet get (BS.singleton w) == Right (frameForId w)
 
-frameForId :: (Num n, Eq n) => n -> FrameId
-frameForId 0 = noFrameId
-frameForId 1 = frameId
-frameForId i = nextFrame $ frameForId $ i - 1
-
-idForFrame :: FrameId -> Word8
-idForFrame = read . drop 1 . dropWhile (/=' ') . show
-
-instance Arbitrary FrameId where
-    arbitrary = liftM frameForId (choose (0, 255)::Gen Word8)
-
 
 -- Command name
 commandNameSerializeParse a b = serParseTest (commandName a b)
 
 commandNameExampleDH = parse [0x44, 0x48] == Right (commandName 'D' 'H')
 
-instance Arbitrary CommandName where
-    arbitrary = liftM2 commandName letter letter
-        where letter = choose ('A', 'Z')
 
 -- Modem status
 
@@ -65,9 +52,6 @@ modemStatusSerialize =
 modemStatusSerializeParse :: ModemStatus -> Bool
 modemStatusSerializeParse = serParseTest
 
-instance Arbitrary ModemStatus where
-    arbitrary = elements $ enumFrom minBound
-
 
 -- Command status
 
@@ -80,9 +64,6 @@ commandStatusSerialize =
 commandStatusSerializeParse :: CommandStatus -> Bool
 commandStatusSerializeParse = serParseTest
 
-instance Arbitrary CommandStatus where
-    arbitrary = elements $ enumFrom minBound
-
 
 -- Address
 
@@ -91,12 +72,6 @@ address64SerializeParse = serParseTest
 
 address16SerializeParse :: Address16 -> Bool
 address16SerializeParse = serParseTest
-
-instance Arbitrary Address64 where
-    arbitrary = liftM Address64 (arbitrary :: Gen Word64)
-
-instance Arbitrary Address16 where
-    arbitrary = liftM Address16 (arbitrary :: Gen Word16)
 
 
 -- Transmit status
@@ -110,9 +85,6 @@ transmitStatusSerialize =
 transmitStatusSerializeParse :: TransmitStatus -> Bool
 transmitStatusSerializeParse = serParseTest
 
-instance Arbitrary TransmitStatus where
-    arbitrary = elements $ enumFrom minBound
-
 
 -- Signal Strength
 
@@ -120,9 +92,6 @@ signalStrengthSerializeParse :: SignalStrength -> Bool
 signalStrengthSerializeParse s = serParseTest s
 
 signalStrengthExample = parse [0x28] == Right (fromDbm (-40))
-
-instance Arbitrary SignalStrength where
-    arbitrary = liftM fromDbm (choose ((-255), 0))
 
 
 -- Command In
