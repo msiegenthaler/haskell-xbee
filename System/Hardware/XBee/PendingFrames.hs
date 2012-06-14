@@ -17,16 +17,12 @@ module System.Hardware.XBee.PendingFrames (
 
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Identity
 import Data.Maybe
 import Data.SouSiT
 import System.Hardware.XBee.Command
+import System.Hardware.XBee.DeviceCommand
 
-
-data CommandResponse = CRData CommandIn
-                     | CRPurged
-                     | CRTimeout deriving (Show, Eq)
-
-type CommandHandler a = Sink CommandResponse STM a
 
 data PendingFrame = forall a . PendingFrame Integer FrameId (CommandHandler a) (TMVar a)
 data PendingFrames = PendingFrames (TVar [PendingFrame]) (TVar Integer)
@@ -110,6 +106,6 @@ processCommand (PendingFrames fsv _) predf cmd = do
                    | otherwise = return (o ++ [f])
 
 pushCommandResponse :: PendingFrame -> CommandResponse -> STM (Maybe PendingFrame)
-pushCommandResponse (PendingFrame cid f h v) i = feedSink h i >>= handleDone
-    where handleDone (SinkDone r) = r >>= tryPutTMVar v >> return Nothing
+pushCommandResponse (PendingFrame cid f h v) i = handleDone (runIdentity $ feedSink h i)
+    where handleDone (SinkDone r) = tryPutTMVar v (runIdentity r) >> return Nothing
           handleDone h' = return $ Just $ PendingFrame cid f h' v

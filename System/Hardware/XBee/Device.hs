@@ -29,6 +29,7 @@ module System.Hardware.XBee.Device (
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.PendingFrames
+import System.Hardware.XBee.DeviceCommand
 import Data.List
 import Data.Word
 import Data.Time.Units
@@ -88,9 +89,6 @@ tchanSource c = BasicSource2 step
           pull = atomically $ readTChan c
 
 
-
-data FrameCmdSpec a   = FrameCmdSpec (FrameId -> CommandOut) (CommandHandler a)
-data FramelessCmdSpec = FramelessCmdSpec CommandOut
 
 -- | Process a command and return a "future" for getting the response.
 -- The result is read using resultGet in a different atomically than the sendCommand.
