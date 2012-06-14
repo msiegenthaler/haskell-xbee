@@ -39,7 +39,7 @@ singleAnswer f failValue = SinkCont step (return failValue)
 -- Sends up to 100 bytes to another XBee.
 send :: XBeeAddress -> [Word8] -> FrameCmdSpec TransmitStatus
 send to d = FrameCmdSpec (cmd to) (singleAnswer handler TransmitNoAck)
-    where cmd (XBeeAddress64 to) f = Transmit64 f to False False d
-          cmd (XBeeAddress16 to) f = Transmit16 f to False False d
+    where cmd (XBeeAddress64 to) f = Transmit64 f to False False (take 100 d)
+          cmd (XBeeAddress16 to) f = Transmit16 f to False False (take 100 d)
           handler (TransmitResponse _ r) = r
           handler _ = TransmitNoAck
