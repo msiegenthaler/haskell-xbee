@@ -72,10 +72,10 @@ runAtOk frameId (FrameCmdSpec cmd h) d = case ic of
           result = process h . CRData
 
 
-atMyReadValid f dst = runAtOk f (C.getAddress16 dst) [0x21, 0x0E] == Right (Address16 0x210E)
+atMyReadValid f dst = runAtOk f (readAT C.address16 dst) [0x21, 0x0E] == Right (Address16 0x210E)
 
 atMyWriteValid f = (cmd f) == ATCommand f (commandName 'M' 'Y') [0x33, 0x21]
-    where (FrameCmdSpec cmd _) = C.setAddress16 Local (Address16 0x3321)
+    where (FrameCmdSpec cmd _) = setAT C.address16 Local (Address16 0x3321)
 
 
 --Main

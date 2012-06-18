@@ -15,8 +15,11 @@ module System.Hardware.XBee.DeviceCommand (
     ATDestination(..),
     atCommand,
     -- ** Specific AT Commands
-    getAddress16,
-    setAddress16
+    ATSetting,
+    atSetting,
+    setAT,
+    readAT,
+    address16
 ) where
 
 import Data.Word
@@ -74,7 +77,6 @@ broadcast d = FramelessCmdSpec $ transmit noFrameId (XBeeAddress64 broadcastAddr
 
 data ATRequest = ATRequest CommandName [Word8] deriving (Eq, Show)
 atRequest c1 c2 d = ATRequest (commandName c1 c2) d
-atRequestGet c1 c2 = atRequest c1 c2 []
 atRequestSer c1 c2 s = atRequest c1 c2 (serialize s)
     where serialize = BS.unpack . runPut . put
 
@@ -108,17 +110,26 @@ atResponse (ATResponse CmdInvalidCommand _) = Left "invalid command"
 atResponse (ATResponse CmdInvalidParameter _) = Left "invalid parameter"
 atResponse (ATResponse CmdError _) = Left "error executing the command"
 
-parseAtResponse :: Serialize s => ATResponse -> Either String s
-parseAtResponse d = atResponse d >>= runGet get . BS.pack
 
-parseAt = fmap parseAtResponse
+discardATResponseData :: ATResponse -> Either String ()
+discardATResponseData = fmap f . atResponse
+    where f _ = ()
 
-discardData = fmap (fmap (\i -> ()) atResponse)
+parseATResponseData :: Serialize a => ATResponse -> Either String a
+parseATResponseData = join . fmap f . atResponse
+    where f = runGet get . BS.pack
 
--- | Gets the 16-bit source address.
-getAddress16 :: ATDestination -> FrameCmdSpecAT Address16
-getAddress16 dst = parseAt $ atCommand dst (atRequestGet 'M' 'Y')
 
--- | Sets the 16-bit source address.
-setAddress16 :: ATDestination -> Address16 -> FrameCmdSpec ()
-setAddress16 dst a = discardData $ atCommand dst (atRequestSer 'M' 'Y' a)
+data ATSetting a = ATSetting {
+        setAT  :: ATDestination -> a -> FrameCmdSpecAT (),
+        readAT :: ATDestination -> FrameCmdSpecAT a }
+
+atSetting :: Serialize a => Char -> Char -> ATSetting a
+atSetting c1 c2 = ATSetting set rd
+    where rd dst = fmap parseATResponseData $ atCommand dst (atRequest c1 c2 [])
+          set dst v = fmap discardATResponseData $ atCommand dst (atRequestSer c1 c2 v)
+
+
+-- | The 16-bit source address of the XBee.
+address16 :: ATSetting Address16
+address16 = atSetting 'M' 'Y'
