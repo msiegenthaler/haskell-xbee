@@ -14,11 +14,12 @@ module System.Hardware.XBee.DeviceCommand (
     ATResponse(..),
     ATDestination(..),
     atCommand,
-    -- ** Specific AT Commands
+    -- ** AT Settings
     ATSetting,
     atSetting,
     setAT,
     readAT,
+    -- ** Specific AT Settings
     address16
 ) where
 
