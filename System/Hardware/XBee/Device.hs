@@ -43,7 +43,7 @@ import qualified Data.SouSiT.Trans as T
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
                    outQueue  :: TChan CommandOut,
-                   subs      :: TChan CommandIn,
+                   inQueue   :: TChan CommandIn,
                    pendingFrames :: PendingFrames }
 
 
@@ -116,7 +116,7 @@ fireCommandIO x s = atomically $ fireCommand x s
 -- that are also handled by sendCommand.
 rawInSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource2 m CommandIn
 rawInSource mf x = BasicSource2 first
-    where first sink = mf (dupTChan (subs x)) >>= (flip step) sink
+    where first sink = mf (dupTChan (inQueue x)) >>= (flip step) sink
           step c (SinkCont next _) = mf (readTChan c) >>= next >>= step c
           step c done = return done
 
