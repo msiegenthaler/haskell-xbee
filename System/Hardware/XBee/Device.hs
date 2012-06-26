@@ -40,8 +40,10 @@ import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
 
+type Timeout = (Int, IO ())
+
 -- | Opaque representation of the locally attached XBee device.
-data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
+data XBee = XBee { timeoutQueue :: TChan Timeout,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
                    pendingFrames :: PendingFrames }
@@ -54,17 +56,15 @@ newDevice src sink = do
         sq <- newTChanIO
         ss <- newTChanIO
         pf <- atomically newPendingFrames
-        forkIO $ runTimeouter sq oq
+        forkIO $ runTimeouter sq
         forkIO $ runReadIn src pf ss
         forkIO $ runWriteOut oq sink
         return $ XBee sq oq ss pf
 -- TODO exception handling!
 
-runTimeouter :: TChan (CommandOut,IO ()) -> TChan CommandOut -> IO ()
-runTimeouter i o = atomically transfer >>= forkIO >> return ()
-    where transfer = do (m, toa) <- readTChan i
-                        writeTChan o m
-                        return toa
+runTimeouter :: TChan Timeout -> IO ()
+runTimeouter q = atomically (readTChan q) >>= exec >> runTimeouter q
+    where exec (tmout, io) = forkIO $ threadDelay tmout >> io
 
 runReadIn :: Source src => src IO Word8 -> PendingFrames -> TChan CommandIn -> IO ()
 runReadIn src pf subs = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
@@ -94,10 +94,10 @@ tchanSource c = BasicSource2 step
 sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (XBeeResult a)
 sendCommand x (FrameCmdSpec cmd ch) tmo = do
         (fid, r) <- enqueue (pendingFrames x) ch
-        writeTChan (sendQueue x) (cmd fid,timeout r)
+        writeTChan (outQueue x) (cmd fid)
+        writeTChan (timeoutQueue x) (tmoUs, atomically $ resultTimeout r)
         return r
-    where timeout r = threadDelay (tmous) >> (atomically $ resultTimeout r)
-          tmous = fromIntegral $ toMicroseconds tmo
+    where tmoUs = fromIntegral $ toMicroseconds tmo
 
 -- | Atomically sendCommand.
 sendCommandIO x spec tmo = atomically $ sendCommand x spec tmo
