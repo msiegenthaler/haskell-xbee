@@ -102,7 +102,7 @@ sendCommand x (FrameCmdSpec cmd ch) tmo = do
 -- | Atomically sendCommand.
 sendCommandIO x spec tmo = atomically $ sendCommand x spec tmo
 
--- | Executes sendCommand and resultGet together.
+-- | Executes sendCommand and resultGet together (in two atomicallies).
 sendCommandAndWaitIO x cmd t = atomically send >>= atomically . resultGet
     where send = sendCommand x cmd t
 
