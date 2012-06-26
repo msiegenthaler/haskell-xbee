@@ -44,7 +44,6 @@ import qualified Data.SouSiT.Trans as T
 data XBee = XBee { sendQueue :: TChan (CommandOut,IO ()),
                    outQueue  :: TChan CommandOut,
                    subs      :: TChan CommandIn,
-                   threads   :: (ThreadId, ThreadId, ThreadId),
                    pendingFrames :: PendingFrames }
 
 
@@ -55,10 +54,10 @@ newDevice src sink = do
         sq <- newTChanIO
         ss <- newTChanIO
         pf <- atomically newPendingFrames
-        tt <- forkIO $ runTimeouter sq oq
-        tr <- forkIO $ runReadIn src pf ss
-        tw <- forkIO $ runWriteOut oq sink
-        return $ XBee sq oq ss (tr,tt,tw) pf
+        forkIO $ runTimeouter sq oq
+        forkIO $ runReadIn src pf ss
+        forkIO $ runWriteOut oq sink
+        return $ XBee sq oq ss pf
 -- TODO exception handling!
 
 runTimeouter :: TChan (CommandOut,IO ()) -> TChan CommandOut -> IO ()
