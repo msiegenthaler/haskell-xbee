@@ -99,6 +99,9 @@ sendCommand x (FrameCmdSpec cmd ch) tmo = do
     where timeout r = threadDelay (tmous) >> (atomically $ resultTimeout r)
           tmous = fromIntegral $ toMicroseconds tmo
 
+-- | Atomically sendCommand.
+sendCommandIO x spec tmo = atomically $ sendCommand x spec tmo
+
 -- | Executes sendCommand and resultGet together.
 sendCommandAndWaitIO x cmd t = atomically send >>= atomically . resultGet
     where send = sendCommand x cmd t
