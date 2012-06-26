@@ -36,7 +36,7 @@ main = withSerialPort portFile portSettings body
                        sink = T.map BS.singleton =$ rawSink
                        src' = decorateSource (traceHex "in") src
                        sink' = decorateSink (traceHex "out") sink in
-                execute' src' sink'
+                execute src' sink'
                 -- TODO stop the XBee!
 
 
