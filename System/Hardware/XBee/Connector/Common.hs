@@ -9,7 +9,7 @@ import System.Hardware.XBee.Device
 
 
 -- | Handles the xSchedule aspect of the interface. Reads and schedules the items.
---   The scheduler terminates as soon as the stopRequest-TVar is filled.
+--   This method loop until the stopRequest-TVar is filled, then it stops.
 runScheduler :: XBeeInterface -> TMVar () -> IO ()
 runScheduler x stopRequest = readItem >>= handle
     where readItem = atomically $ liftM Right (xSchedule x)
