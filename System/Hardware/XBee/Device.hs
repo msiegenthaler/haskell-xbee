@@ -10,7 +10,7 @@ module System.Hardware.XBee.Device (
     xWrite,
     xRead,
     xSchedule,
-    Scheduled,
+    Scheduled(..),
     -- * Commands
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
