@@ -40,8 +40,6 @@ main = withSerialPort portFile portSettings body
                        src' = decorateSource (traceHex "in") src
                        sink' = decorateSink (traceHex "out") sink in
                 execute src' sink'
-                -- TODO stop the XBee!
-
 
 serialPortSource h = hSourceNoEOF rd h $= T.filter hasData
     where rd h = do r <- BS.hGetSome h fetchSize
