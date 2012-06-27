@@ -51,7 +51,7 @@ serialPortSink h = hSink BS.hPut h
 
 execute src sink = do
         putStrLn "Instantiating XBee"
-        xbee <- newDevice src sink
+        xbee <- undefined --newDevice src sink
         putStrLn "Reading the Address16"
         let cmd = readAT address16 Local
         a16 <- sendCommandAndWaitIO xbee cmd tmout

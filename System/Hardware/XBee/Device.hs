@@ -4,6 +4,12 @@ module System.Hardware.XBee.Device (
     -- * Device
     XBee,
     newDevice,
+    -- * Device Interface
+    XBeeInterface,
+    xWrite,
+    xRead,
+    xSchedule,
+    Scheduled,
     -- * Commands
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
@@ -36,56 +42,53 @@ import Data.Time.Units
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Applicative
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
-
-type Timeout = (Int, IO ())
+-- | Task to be scheduled. Delay in microseconds and the action to execute after the delay.
+data Scheduled = Scheduled Int (IO ())
 
 -- | Opaque representation of the locally attached XBee device.
-data XBee = XBee { timeoutQueue :: TChan Timeout,
+data XBee = XBee { timeoutQueue :: TChan Scheduled,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
                    pendingFrames :: PendingFrames }
 
 
--- | Creates a new XBee device based upon a byte source and sink.
-newDevice :: Source src => src IO Word8 -> Sink Word8 IO () -> IO XBee
-newDevice src sink = do
-        oq <- newTChanIO
-        sq <- newTChanIO
-        ss <- newTChanIO
-        pf <- atomically newPendingFrames
-        forkIO $ runTimeouter sq
-        forkIO $ runReadIn src pf ss
-        forkIO $ runWriteOut oq sink
-        return $ XBee sq oq ss pf
--- TODO exception handling!
 
-runTimeouter :: TChan Timeout -> IO ()
-runTimeouter q = atomically (readTChan q) >>= exec >> runTimeouter q
-    where exec (tmout, io) = forkIO $ threadDelay tmout >> io
+-- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
+--   actual device. See i.e. the HandleDeviceConnector module.
+newtype XBeeInterface = XBeeInterface XBee
 
-runReadIn :: Source src => src IO Word8 -> PendingFrames -> TChan CommandIn -> IO ()
-runReadIn src pf subs = src $$ word8ToFrame =$= T.map frameToCommand =$= T.eitherRight =$ sink
-    where sink = stmSink (processIn pf subs)
+unwrap (XBeeInterface x) = x
 
-processIn :: PendingFrames -> TChan CommandIn -> CommandIn -> STM ()
-processIn pf subs msg = handleCommand pf msg >> writeTChan subs msg
+-- | Pass a command to the interface.
+--   Typically this is implemented by reading from the serial port and calling this method.
+xWrite :: XBeeInterface -> CommandIn -> STM ()
+xWrite x = writeTChan q
+    where q = inQueue $ unwrap x
 
-runWriteOut :: (TChan CommandOut) -> Sink Word8 IO () -> IO ()
-runWriteOut c sink = src $$ T.map commandToFrame =$= frameToWord8 =$ sink
-    where src = tchanSource c
+-- | Read a command from the interface.
+---  Typically this is implemented by writing the result of this method to the serial port.
+xRead :: XBeeInterface -> STM CommandOut
+xRead x = readTChan q
+    where q = outQueue $ unwrap x
 
-stmSink :: (a -> STM ()) -> Sink a IO ()
-stmSink f = SinkCont step (return ())
-    where step i = atomically (f i) >> return (stmSink f)
+-- | Get the next command to be scheduled from the interface. This is mainly used for timeouts.
+--   The connector implementation needs to execute the scheduled items after the specified
+--   delay.
+xSchedule :: XBeeInterface -> STM Scheduled
+xSchedule x = readTChan q
+    where q = timeoutQueue $ unwrap x
 
-tchanSource :: TChan a -> BasicSource2 IO a
-tchanSource c = BasicSource2 step
-    where step (SinkCont next _) = pull >>= next >>= step
-          step s@(SinkDone _)    = return s
-          pull = atomically $ readTChan c
+
+
+-- | Create a new XBee device along with the corresponding interface.
+newDevice :: STM (XBee, XBeeInterface)
+newDevice = liftM both (XBee <$> newTChan <*> newTChan <*> newTChan <*> newPendingFrames)
+    where both x = (x, XBeeInterface x)
+
 
 
 
@@ -95,7 +98,7 @@ sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (XBeeResul
 sendCommand x (FrameCmdSpec cmd ch) tmo = do
         (fid, r) <- enqueue (pendingFrames x) ch
         writeTChan (outQueue x) (cmd fid)
-        writeTChan (timeoutQueue x) (tmoUs, atomically $ resultTimeout r)
+        writeTChan (timeoutQueue x) $ Scheduled tmoUs (atomically $ resultTimeout r)
         return r
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
