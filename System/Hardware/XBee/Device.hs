@@ -3,6 +3,7 @@
 module System.Hardware.XBee.Device (
     -- * Device
     XBee,
+    XBeeM(..),
     newDevice,
     -- * Device Interface
     XBeeInterface,
@@ -18,18 +19,13 @@ module System.Hardware.XBee.Device (
     sendCommand,
     sendCommandAndWaitIO,
     fireCommand,
-    fireCommandIO,
     -- * Source
     rawInSource,
     rawInSourceSTM,
     rawInSourceIO,
     ReceivedMessage(..),
     messagesSource,
-    messagesSourceSTM,
-    messagesSourceIO,
     modemStatusSource,
-    modemStatusSourceSTM,
-    modemStatusSourceIO
 ) where
 
 import System.Hardware.XBee.Frame
@@ -39,12 +35,12 @@ import System.Hardware.XBee.DeviceCommand
 import Data.List
 import Data.Word
 import Data.Time.Units
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Applicative
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
+
 
 -- | Task to be scheduled. Delay in microseconds and the action to execute after the delay.
 data Scheduled = Scheduled Int (IO ())
@@ -55,7 +51,13 @@ data XBee = XBee { timeoutQueue :: TChan Scheduled,
                    inQueue   :: TChan CommandIn,
                    pendingFrames :: PendingFrames }
 
-
+-- | Monad class required interacting with the XBee.
+class Monad m => XBeeM m where
+    execSTM :: STM a -> m a
+instance XBeeM STM where
+    execSTM = id
+instance XBeeM IO where
+    execSTM = atomically
 
 -- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
 --   actual device. See i.e. the HandleDeviceConnector module.
@@ -94,28 +96,21 @@ newDevice = liftM both (XBee <$> newTChan <*> newTChan <*> newTChan <*> newPendi
 
 -- | Process a command and return a "future" for getting the response.
 -- The result is read using resultGet in a different atomically than the sendCommand.
-sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (XBeeResult a)
-sendCommand x (FrameCmdSpec cmd ch) tmo = do
+sendCommand :: (XBeeM m, TimeUnit time) => XBee -> FrameCmdSpec a -> time -> m (XBeeResult a)
+sendCommand x (FrameCmdSpec cmd ch) tmo = execSTM $ do
         (fid, r) <- enqueue (pendingFrames x) ch
         writeTChan (outQueue x) (cmd fid)
         writeTChan (timeoutQueue x) $ Scheduled tmoUs (atomically $ resultTimeout r)
         return r
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
--- | Atomically sendCommand.
-sendCommandIO x spec tmo = atomically $ sendCommand x spec tmo
-
 -- | Executes sendCommand and resultGet together (in two atomicallies).
 sendCommandAndWaitIO x cmd t = atomically send >>= atomically . resultGet
     where send = sendCommand x cmd t
 
 -- | Sends a command without checking for a response.
-fireCommand :: XBee -> FramelessCmdSpec -> STM ()
-fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
-
--- | Executes fireCommand.
-fireCommandIO x s = atomically $ fireCommand x s
-
+fireCommand :: XBeeM m => XBee -> FramelessCmdSpec -> m ()
+fireCommand x (FramelessCmdSpec cmd) = execSTM $ writeTChan (outQueue x) cmd
 
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
@@ -148,27 +143,14 @@ commandInToReceivedMessage = T.filterMap step
           step _ = Nothing
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
-messagesSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource m ReceivedMessage
-messagesSource mf x = rawInSource mf x $= commandInToReceivedMessage
-
--- | STM version of messagesSource
-messagesSourceSTM = messagesSource id
-
--- | IO version of messagesSource
-messagesSourceIO = messagesSource atomically
-
+messagesSource :: XBeeM m => XBee -> BasicSource m ReceivedMessage
+messagesSource x = rawInSource execSTM x $= commandInToReceivedMessage
 
 -- | Source for modem status updates.
-modemStatusSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource m ModemStatus
-modemStatusSource mf x = rawInSource mf x $= commandInToModemStatus
+modemStatusSource :: XBeeM m => XBee -> BasicSource m ModemStatus
+modemStatusSource x = rawInSource execSTM x $= commandInToModemStatus
 
 commandInToModemStatus :: Transform CommandIn ModemStatus
 commandInToModemStatus = T.filterMap step
     where step (ModemStatusUpdate s) = Just s
           step _ = Nothing
-
--- | STM version of modemStatusSource
-modemStatusSourceSTM = modemStatusSource id
-
--- | IO version of modemStatusSource
-modemStatusSourceIO = modemStatusSource atomically
