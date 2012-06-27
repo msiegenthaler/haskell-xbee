@@ -15,6 +15,7 @@ import System.Hardware.Serial
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.DeviceCommand
+import System.Hardware.XBee.Command
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Connector.Common
 import System.Hardware.XBee.Connector.Handle
@@ -53,11 +54,27 @@ serialPortSink h = hSink BS.hPut h
 
 execute src sink = do
         putStrLn "Instantiating XBee"
-        xbee <- undefined --newDevice src sink
+        (xbee,xif) <- newDevice
+        putStrLn "Starting XBee..."
+        stop <- start xif cmdSrc cmdSink
+        putStrLn "XBee started."
         putStrLn "Reading the Address16"
         let cmd = readAT address16 Local
         a16 <- sendCommandAndWaitIO xbee cmd tmout
         putStrLn $ "  " ++ (show a16)
+        putStrLn "Stopping XBee..."
+        stop
+        putStrLn "XBee stopped."
+    where cmdSrc = src $= word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
+          cmdSink = T.map commandToFrame =$= frameToWord8 =$ sink
+
+
+start xif src sink = do
+        st <- forkIO (toSchedule xif $$ timeoutSink)
+        rt <- forkIO (src $$ incoming xif)
+        wt <- forkIO (outgoing xif $$ sink)
+        return $ mapM killThread [st,rt,wt]
+
 
 
 
