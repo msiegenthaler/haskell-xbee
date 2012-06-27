@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes #-}
 
 module System.Hardware.XBee.Device (
     -- * Device
@@ -21,8 +21,6 @@ module System.Hardware.XBee.Device (
     fireCommand,
     -- * Source
     rawInSource,
-    rawInSourceSTM,
-    rawInSourceIO,
     ReceivedMessage(..),
     messagesSource,
     modemStatusSource,
@@ -115,18 +113,11 @@ fireCommand x (FramelessCmdSpec cmd) = execSTM $ writeTChan (outQueue x) cmd
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by sendCommand.
-rawInSource :: Monad m => (forall x . STM x -> m x) -> XBee -> BasicSource2 m CommandIn
-rawInSource mf x = BasicSource2 first
-    where first sink = mf (dupTChan (inQueue x)) >>= (flip step) sink
-          step c (SinkCont next _) = mf (readTChan c) >>= next >>= step c
+rawInSource :: XBeeM m => XBee -> BasicSource2 m CommandIn
+rawInSource x = BasicSource2 first
+    where first sink = execSTM (dupTChan (inQueue x)) >>= (flip step) sink
+          step c (SinkCont next _) = execSTM (readTChan c) >>= next >>= step c
           step c done = return done
-
--- | STM version of rawInSource.
-rawInSourceSTM = rawInSource id
-
--- | IO version of rawInSource.
-rawInSourceIO = rawInSource atomically
-
 
 -- | An incoming message (abstracts over Receive64 and Receive16)
 data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
@@ -144,11 +135,11 @@ commandInToReceivedMessage = T.filterMap step
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
 messagesSource :: XBeeM m => XBee -> BasicSource m ReceivedMessage
-messagesSource x = rawInSource execSTM x $= commandInToReceivedMessage
+messagesSource x = rawInSource x $= commandInToReceivedMessage
 
 -- | Source for modem status updates.
 modemStatusSource :: XBeeM m => XBee -> BasicSource m ModemStatus
-modemStatusSource x = rawInSource execSTM x $= commandInToModemStatus
+modemStatusSource x = rawInSource x $= commandInToModemStatus
 
 commandInToModemStatus :: Transform CommandIn ModemStatus
 commandInToModemStatus = T.filterMap step
