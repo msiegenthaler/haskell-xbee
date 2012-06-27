@@ -6,10 +6,7 @@ module System.Hardware.XBee.Device (
     XBeeM(..),
     newDevice,
     -- * Device Interface
-    XBeeInterface,
-    xWrite,
-    xRead,
-    xSchedule,
+    XBeeInterface(..),
     Scheduled(..),
     -- * Commands
     FrameCmdSpec(..),
@@ -37,6 +34,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Applicative
 import Data.SouSiT
+import Data.SouSiT.STM
 import qualified Data.SouSiT.Trans as T
 
 
@@ -44,7 +42,7 @@ import qualified Data.SouSiT.Trans as T
 data Scheduled = Scheduled Int (IO ())
 
 -- | Opaque representation of the locally attached XBee device.
-data XBee = XBee { timeoutQueue :: TChan Scheduled,
+data XBee = XBee { scheduleQueue :: TChan Scheduled,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
                    pendingFrames :: PendingFrames }
@@ -59,36 +57,34 @@ instance XBeeM IO where
 
 -- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
 --   actual device. See i.e. the HandleDeviceConnector module.
-newtype XBeeInterface = XBeeInterface XBee
-
-unwrap (XBeeInterface x) = x
-
--- | Pass a command to the interface.
---   Typically this is implemented by reading from the serial port and calling this method.
-xWrite :: XBeeInterface -> CommandIn -> STM ()
-xWrite x = writeTChan q
-    where q = inQueue $ unwrap x
-
--- | Read a command from the interface.
----  Typically this is implemented by writing the result of this method to the serial port.
-xRead :: XBeeInterface -> STM CommandOut
-xRead x = readTChan q
-    where q = outQueue $ unwrap x
-
--- | Get the next command to be scheduled from the interface. This is mainly used for timeouts.
---   The connector implementation needs to execute the scheduled items after the specified
---   delay.
-xSchedule :: XBeeInterface -> STM Scheduled
-xSchedule x = readTChan q
-    where q = timeoutQueue $ unwrap x
-
+data XBeeInterface = XBeeInterface {
+                    -- | Commands that are sent to the xbee device (serial port).
+                    outgoing   :: BasicSource2 IO CommandOut,
+                    -- | Commands received from the xbee device (serial port).
+                    incoming   :: Sink CommandIn IO (),
+                    -- | Actions to be scheduled with the specified delay.
+                    --   This is used mainly for timeouts.
+                    toSchedule :: BasicSource2 IO Scheduled }
 
 
 -- | Create a new XBee device along with the corresponding interface.
-newDevice :: STM (XBee, XBeeInterface)
-newDevice = liftM both (XBee <$> newTChan <*> newTChan <*> newTChan <*> newPendingFrames)
-    where both x = (x, XBeeInterface x)
+newDevice :: XBeeM m => m (XBee, XBeeInterface)
+newDevice = execSTM $ do
+        inQ  <- newTChan
+        outQ <- newTChan
+        scdQ <- newTChan
+        pf   <- newPendingFrames
+        let xbee = XBee scdQ outQ inQ pf
+        let xif  = mkXif inQ outQ scdQ pf
+        return (xbee, xif)
 
+mkXif inQ outQ scdQ pf = XBeeInterface o i s
+    where o = tchanSource outQ
+          s = tchanSource scdQ
+          i = stmSink' $ processIn pf inQ
+
+processIn :: PendingFrames -> TChan CommandIn -> CommandIn -> STM ()
+processIn pf subs msg = handleCommand pf msg >> writeTChan subs msg
 
 
 
@@ -98,7 +94,7 @@ sendCommand :: (XBeeM m, TimeUnit time) => XBee -> FrameCmdSpec a -> time -> m (
 sendCommand x (FrameCmdSpec cmd ch) tmo = execSTM $ do
         (fid, r) <- enqueue (pendingFrames x) ch
         writeTChan (outQueue x) (cmd fid)
-        writeTChan (timeoutQueue x) $ Scheduled tmoUs (atomically $ resultTimeout r)
+        writeTChan (scheduleQueue x) $ Scheduled tmoUs (atomically $ resultTimeout r)
         return r
     where tmoUs = fromIntegral $ toMicroseconds tmo
 

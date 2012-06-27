@@ -16,6 +16,8 @@ import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.DeviceCommand
 import System.Hardware.XBee.Frame
+import System.Hardware.XBee.Connector.Common
+import System.Hardware.XBee.Connector.Handle
 import Control.Concurrent
 import Control.Monad
 import System.IO

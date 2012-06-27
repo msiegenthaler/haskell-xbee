@@ -1,20 +1,17 @@
 module System.Hardware.XBee.Connector.Common (
-    runScheduler
+    timeoutSink
 ) where
 
+import Data.SouSiT
 import Control.Concurrent
-import Control.Concurrent.STM
 import Control.Monad
 import System.Hardware.XBee.Device
 
 
--- | Handles the xSchedule aspect of the interface. Reads and schedules the items.
---   This method loop until the stopRequest-TVar is filled, then it stops.
-runScheduler :: XBeeInterface -> TMVar () -> IO ()
-runScheduler x stopRequest = readItem >>= handle
-    where readItem = atomically $ liftM Right (xSchedule x)
-                         `orElse` liftM Left (takeTMVar stopRequest)
-          handle (Right s) = forkIO (schedule s) >> runScheduler x stopRequest
-          handle (Left _) = return ()
+-- | Sink that schedules the received. The sink is never done.
+--   Pending timeouts are processed even after the sink is closed.
+timeoutSink :: Sink Scheduled IO ()
+timeoutSink = SinkCont next done
+    where next i = (return i) >>= forkIO . schedule >> return (SinkCont next done)
+          done = return ()
           schedule (Scheduled time action) = threadDelay time >> action
-
