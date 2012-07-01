@@ -19,11 +19,11 @@ tmout = fromMicroseconds 2000000 :: Second
 main = withSerialPort portFile portSettings body
     where body h = do (xbee,xif) <- newDevice
                       putStrLn "Starting XBee..."
-                      stop <- connectToHandle xif h
+                      connector <- connectToHandle xif h
                       putStrLn "XBee started."
                       execute xbee
                       putStrLn "Stopping XBee..."
-                      stop
+                      stopConnector connector
                       putStrLn "XBee stopped."
 
 execute xbee = do
