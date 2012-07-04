@@ -71,19 +71,23 @@ requestAndWait :: Circular c => Correlator c i
     -> ResponseM i a  -- ^ Monad to process the response.
     -> IO a
 requestAndWait corr sf rm = do
-    (c,future) <- atomically $ request corr rm
+    (c,future,_) <- atomically $ request corr rm
     sf c
     atomically future
 
 -- | Registers a response processor (ResponseM) with the correlator and returns a
 -- correlation-id (must be used to tag the request with) along with an STM monad that will
 -- wait for and get the request.
+-- The last value of the tuple allows feeding values directly into the response. A common
+-- use case is to trigger a timeout.
 request :: Circular c => Correlator c i
     -> ResponseM i a
-    -> STM (c, STM a)
+    -> STM (c, STM a, i -> STM ())
 request (Correlator pv idV ipV) (ResponseM f) = do
-    Entry ident key chan <- nextId idV >>= addEntry ipV pv
-    return (key, f chan <* removeEntry ipV ident)
+        Entry ident key chan <- nextId idV >>= addEntry ipV pv
+        let future = f chan <* removeEntry ipV ident
+        let feedFun = writeTChan chan
+        return (key, future, feedFun)
 
 
 nextId idV = do
