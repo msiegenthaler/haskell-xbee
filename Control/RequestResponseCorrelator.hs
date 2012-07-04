@@ -1,3 +1,5 @@
+{-# LANGUAGE Rank2Types #-}
+
 -- | Correlates request and responses by means of a Cirular instance.
 --   The responses are processed by the ResponseM monad, one request may result in more than
 --   one response.
@@ -11,6 +13,7 @@ module Control.RequestResponseCorrelator (
     push,
     -- * Response processing
     ResponseM,
+    processResponse,
     fetch
 ) where
 
@@ -44,7 +47,7 @@ newCorrelator pv = liftM2 (Correlator pv) (newTVar initial) (newTVar [])
 
 -- | Monad to handle the response.
 -- Use fetch to read a value when inside the monad.
-data ResponseM i a = ResponseM (TChan i -> STM a)
+data ResponseM i a = ResponseM { processResponse :: forall m . Monad m => m i -> m a }
 
 instance Monad (ResponseM i) where
     return v = ResponseM (\_ -> return v)
@@ -61,8 +64,7 @@ instance Applicative (ResponseM i) where
 
 
 -- | Reads a response value. Waits until available.
-fetch :: ResponseM i i
-fetch = ResponseM $ readTChan
+fetch = ResponseM id
 
 
 -- | Sends a request and waits for the response.
@@ -83,9 +85,9 @@ requestAndWait corr sf rm = do
 request :: Circular c => Correlator c i
     -> ResponseM i a
     -> STM (c, STM a, i -> STM ())
-request (Correlator pv idV ipV) (ResponseM f) = do
+request (Correlator pv idV ipV) handler = do
         Entry ident key chan <- nextId idV >>= addEntry ipV pv
-        let future = f chan <* removeEntry ipV ident
+        let future = processResponse handler (readTChan chan) <* removeEntry ipV ident
         let feedFun = writeTChan chan
         return (key, future, feedFun)
 

@@ -7,17 +7,22 @@ import Test.Framework
 import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.XBeeTestSupport
-
 import Data.Word
-import Data.SouSiT
-import Control.Monad.Identity
+import Data.Maybe
+import Control.RequestResponseCorrelator
+import Control.Monad
+import Control.Monad.State
+import Control.Applicative
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.DeviceCommand as C
 
+readElem = liftM unwrap $ get <* put Nothing
+    where unwrap (Just a) = a
+          unwrap Nothing = error "Reading more than one element."
 
-process s v = runIdentity (feedSink s v >>= expectDone)
-    where expectDone (SinkDone r) = r
-          expectDone _ = error "Sink not done"
+process :: CommandHandler a -> CommandResponse -> a
+process h v = let (r,s) = runState (processResponse h readElem) (Just v) in
+        if isJust s then error "No element read" else r
 
 runHandler (FrameCmdSpec _ h) d = process h d
 runHandler' cmd d = runHandler cmd (CRData d)
