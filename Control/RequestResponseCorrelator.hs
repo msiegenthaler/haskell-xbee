@@ -38,8 +38,8 @@ data Correlator c i = Correlator { purgeValue :: i,
 -- | Create a new correlator.
 newCorrelator :: Circular c =>
     i -- ^ The value sent as a response if the request is purged from the correlator.
-    -> IO (Correlator c i)
-newCorrelator pv = liftM2 (Correlator pv) (newTVarIO initial) (newTVarIO [])
+    -> STM (Correlator c i)
+newCorrelator pv = liftM2 (Correlator pv) (newTVar initial) (newTVar [])
 
 
 -- | Monad to handle the response.
