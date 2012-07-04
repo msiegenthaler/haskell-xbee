@@ -33,6 +33,7 @@ module System.Hardware.XBee.Command (
 import Numeric
 import Data.Word
 import Data.Bits
+import Data.Circular
 import Data.Serialize
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
@@ -52,7 +53,9 @@ nextFrame (FrameId i)   = FrameId (i+1)
 instance Serialize FrameId where
     get = liftM FrameId getWord8
     put (FrameId i) = putWord8 i
-
+instance Circular FrameId where
+    initial = frameId
+    next = nextFrame
 
 -- | Address of an XBee device.
 newtype Address64 = Address64 Word64 deriving (Eq)
