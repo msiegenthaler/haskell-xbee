@@ -1,3 +1,7 @@
+-- | Correlates request and responses by means of a Cirular instance.
+--   The responses are processed by the ResponseM monad, one request may result in more than
+--   one response.
+
 module Control.RequestResponseCorrelator (
     Correlator,
     newCorrelator,
