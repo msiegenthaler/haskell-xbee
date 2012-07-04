@@ -7,6 +7,7 @@ module Control.RequestResponseCorrelator (
     newCorrelator,
     -- * Request / Push
     request,
+    requestAndWait,
     push,
     -- * Response processing
     ResponseM,
@@ -65,14 +66,25 @@ fetch = ResponseM $ readTChan
 
 
 -- | Sends a request and waits for the response.
-request :: Circular c => Correlator c i
+requestAndWait :: Circular c => Correlator c i
     -> (c -> IO ())   -- ^ Function used to send the response.
     -> ResponseM i a  -- ^ Monad to process the response.
     -> IO a
-request (Correlator pv idV ipV) sf (ResponseM f) = do
-        Entry ident key chan <- atomically $ nextId idV >>= addEntry ipV pv
-        sf key
-        atomically $ f chan <* removeEntry ipV ident
+requestAndWait corr sf rm = do
+    (c,future) <- atomically $ request corr rm
+    sf c
+    atomically future
+
+-- | Registers a response processor (ResponseM) with the correlator and returns a
+-- correlation-id (must be used to tag the request with) along with an STM monad that will
+-- wait for and get the request.
+request :: Circular c => Correlator c i
+    -> ResponseM i a
+    -> STM (c, STM a)
+request (Correlator pv idV ipV) (ResponseM f) = do
+    Entry ident key chan <- nextId idV >>= addEntry ipV pv
+    return (key, f chan <* removeEntry ipV ident)
+
 
 nextId idV = do
         v <- readTVar idV
