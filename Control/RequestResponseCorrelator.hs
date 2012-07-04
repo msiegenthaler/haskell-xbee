@@ -13,6 +13,7 @@ module Control.RequestResponseCorrelator (
     fetch
 ) where
 
+import Data.Word
 import Data.List
 import Data.Circular
 import Control.Concurrent.STM
@@ -20,9 +21,16 @@ import Control.Monad
 import Control.Applicative
 
 
-data Entry c i = Entry c (TChan i)
+newtype Id = Id Word64 deriving (Eq,Show)
+instance Circular Id where
+    initial = Id 0
+    next (Id n) | n == maxBound = initial
+                | otherwise     = Id (n + 1)
+
+data Entry c i = Entry Id c (TChan i)
 
 data Correlator c i = Correlator { purgeValue :: i,
+                                   currentId  :: TVar Id,
                                    inProgress :: TVar [Entry c i] }
 
 
@@ -30,11 +38,11 @@ data Correlator c i = Correlator { purgeValue :: i,
 newCorrelator :: Circular c =>
     i -- ^ The value sent as a response if the request is purged from the correlator.
     -> IO (Correlator c i)
-newCorrelator pv = liftM (Correlator pv) (atomically $ newTVar [])
+newCorrelator pv = liftM2 (Correlator pv) (newTVarIO initial) (newTVarIO [])
 
 
 -- | Monad to handle the response.
--- Use fetch to read a value.
+-- Use fetch to read a value when inside the monad.
 data ResponseM i a = ResponseM (TChan i -> STM a)
 
 instance Monad (ResponseM i) where
@@ -61,23 +69,34 @@ request :: Circular c => Correlator c i
     -> (c -> IO ())   -- ^ Function used to send the response.
     -> ResponseM i a  -- ^ Monad to process the response.
     -> IO a
-request (Correlator pv ipV) sf (ResponseM f) = do
-        Entry key chan <- atomically $ addEntry ipV pv
+request (Correlator pv idV ipV) sf (ResponseM f) = do
+        Entry ident key chan <- atomically $ nextId idV >>= addEntry ipV pv
         sf key
-        atomically $ f chan
+        atomically $ f chan <* removeEntry ipV ident
+
+nextId idV = do
+        v <- readTVar idV
+        writeTVar idV (next v)
+        return v
+
+removeEntry inProgressV ident = do
+        es <- readTVar inProgressV
+        let es' = filter (not . byId ident) es
+        writeTVar inProgressV es'
+    where byId i (Entry c _ _) = i == c
 
 -- | Create a new entry and add it to the inProgressV. If no slots are available the oldest
 -- (=first) request gets fed purgeValue and removed from the inProgressV.
-addEntry inProgressV purgeValue = do
+addEntry inProgressV purgeValue ident = do
         chan <- newTChan
         es <- readTVar inProgressV
         let (key,toEvict,es') = allocateKey es
-        let entry = Entry key chan
+        let entry = Entry ident key chan
         writeTVar inProgressV (es' ++ [entry])
         evict toEvict
         return entry
     where evict Nothing = return ()
-          evict (Just (Entry _ c)) = writeTChan c purgeValue
+          evict (Just (Entry _ _ c)) = writeTChan c purgeValue
 
 
 -- | Gets a request key to use. If no keys are free then an entry is evicted (snd of return).
@@ -86,14 +105,14 @@ allocateKey es = case findFree keys of
         (Just k) -> (k, Nothing, es)
         Nothing  -> let evict = head es in (key evict, Just evict, tail es)
     where keys = map key es
-          key (Entry k _) = k
+          key (Entry _ k _) = k
 
 -- | Let the Correlator process an response.
 -- It will forward to response to the correct response processor (ResponseM).
 push :: Eq c => Correlator c i -> c -> i -> STM ()
-push (Correlator _ ipV) key value = do
+push (Correlator _ _ ipV) key value = do
         es <- readTVar ipV
         process $ find (byKey key) es
-    where byKey key (Entry k _) = key == k
-          process (Just (Entry _ c)) = writeTChan c value
+    where byKey key (Entry _ k _) = key == k
+          process (Just (Entry _ _ c)) = writeTChan c value
           process Nothing = return ()
