@@ -3,7 +3,6 @@
 module System.Hardware.XBee.Device (
     -- * Device
     XBee,
-    XBeeM(..),
     newDevice,
     -- * Device Interface
     XBeeInterface(..),
@@ -11,10 +10,8 @@ module System.Hardware.XBee.Device (
     -- * Commands
     FrameCmdSpec(..),
     FramelessCmdSpec(..),
-    XBeeResult,
-    resultGet,
     sendCommand,
-    sendCommandAndWaitIO,
+    sendCommandAndWait,
     fireCommand,
     -- * Source
     rawInSource,
@@ -25,7 +22,6 @@ module System.Hardware.XBee.Device (
 
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
-import System.Hardware.XBee.PendingFrames
 import System.Hardware.XBee.DeviceCommand
 import Data.List
 import Data.Word
@@ -33,6 +29,7 @@ import Data.Time.Units
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Applicative
+import Control.RequestResponseCorrelator
 import Data.SouSiT
 import Data.SouSiT.STM
 import qualified Data.SouSiT.Trans as T
@@ -41,19 +38,14 @@ import qualified Data.SouSiT.Trans as T
 -- | Task to be scheduled. Delay in microseconds and the action to execute after the delay.
 data Scheduled = Scheduled Int (IO ())
 
+type XBeeCorrelator =  Correlator FrameId CommandResponse
+
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { scheduleQueue :: TChan Scheduled,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
-                   pendingFrames :: PendingFrames }
+                   correlator :: XBeeCorrelator }
 
--- | Monad class required interacting with the XBee.
-class Monad m => XBeeM m where
-    execSTM :: STM a -> m a
-instance XBeeM STM where
-    execSTM = id
-instance XBeeM IO where
-    execSTM = atomically
 
 -- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
 --   actual device. See i.e. the HandleDeviceConnector module.
@@ -68,51 +60,52 @@ data XBeeInterface = XBeeInterface {
 
 
 -- | Create a new XBee device along with the corresponding interface.
-newDevice :: XBeeM m => m (XBee, XBeeInterface)
-newDevice = execSTM $ do
+newDevice :: STM (XBee, XBeeInterface)
+newDevice = do
         inQ  <- newTChan
         outQ <- newTChan
         scdQ <- newTChan
-        pf   <- newPendingFrames
-        let xbee = XBee scdQ outQ inQ pf
-        let xif  = mkXif inQ outQ scdQ pf
+        corr <- newCorrelator CRPurged
+        let xbee = XBee scdQ outQ inQ corr
+        let xif  = mkXif inQ outQ scdQ corr
         return (xbee, xif)
 
-mkXif inQ outQ scdQ pf = XBeeInterface o i s
+mkXif inQ outQ scdQ corr = XBeeInterface o i s
     where o = tchanSource outQ
           s = tchanSource scdQ
-          i = stmSink' $ processIn pf inQ
+          i = stmSink' $ processIn corr inQ
 
-processIn :: PendingFrames -> TChan CommandIn -> CommandIn -> STM ()
-processIn pf subs msg = handleCommand pf msg >> writeTChan subs msg
+processIn :: XBeeCorrelator -> TChan CommandIn -> CommandIn -> STM ()
+processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
+    where handle (Just frame) = push corr frame (CRData msg)
+          handle Nothing = return ()
 
 
 
 -- | Process a command and return a "future" for getting the response.
--- The result is read using resultGet in a different atomically than the sendCommand.
-sendCommand :: (XBeeM m, TimeUnit time) => XBee -> FrameCmdSpec a -> time -> m (XBeeResult a)
-sendCommand x (FrameCmdSpec cmd ch) tmo = execSTM $ do
-        (fid, r) <- enqueue (pendingFrames x) ch
-        writeTChan (outQueue x) (cmd fid)
-        writeTChan (scheduleQueue x) $ Scheduled tmoUs (atomically $ resultTimeout r)
-        return r
+sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (STM a)
+sendCommand x (FrameCmdSpec cmd h) tmo = do
+        (frame, future, feedFun) <- request (correlator x) h
+        writeTChan (outQueue x) (cmd frame)
+        writeTChan (scheduleQueue x) $ Scheduled tmoUs (atomically $ feedFun CRTimeout)
+        return future
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
 -- | Executes sendCommand and resultGet together (in two atomicallies).
-sendCommandAndWaitIO x cmd t = atomically send >>= atomically . resultGet
+sendCommandAndWait x cmd t = atomically send >>= atomically
     where send = sendCommand x cmd t
 
 -- | Sends a command without checking for a response.
-fireCommand :: XBeeM m => XBee -> FramelessCmdSpec -> m ()
-fireCommand x (FramelessCmdSpec cmd) = execSTM $ writeTChan (outQueue x) cmd
+fireCommand :: XBee -> FramelessCmdSpec -> STM ()
+fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
 
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by sendCommand.
-rawInSource :: XBeeM m => XBee -> BasicSource2 m CommandIn
+rawInSource :: XBee -> BasicSource2 IO CommandIn
 rawInSource x = BasicSource2 first
-    where first sink = execSTM (dupTChan (inQueue x)) >>= (flip step) sink
-          step c (SinkCont next _) = execSTM (readTChan c) >>= next >>= step c
+    where first sink = atomically (dupTChan (inQueue x)) >>= (flip step) sink
+          step c (SinkCont next _) = atomically (readTChan c) >>= next >>= step c
           step c done = return done
 
 -- | An incoming message (abstracts over Receive64 and Receive16)
@@ -130,11 +123,11 @@ commandInToReceivedMessage = T.filterMap step
           step _ = Nothing
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
-messagesSource :: XBeeM m => XBee -> BasicSource m ReceivedMessage
+messagesSource :: XBee -> BasicSource IO ReceivedMessage
 messagesSource x = rawInSource x $= commandInToReceivedMessage
 
 -- | Source for modem status updates.
-modemStatusSource :: XBeeM m => XBee -> BasicSource m ModemStatus
+modemStatusSource :: XBee -> BasicSource IO ModemStatus
 modemStatusSource x = rawInSource x $= commandInToModemStatus
 
 commandInToModemStatus :: Transform CommandIn ModemStatus

@@ -24,11 +24,10 @@ module System.Hardware.XBee.DeviceCommand (
 ) where
 
 import Data.Word
-import Data.SouSiT
 import Data.Serialize
 import qualified Data.ByteString as BS
-import Control.Applicative
-import Control.Monad.Identity
+import Control.RequestResponseCorrelator
+import Control.Monad
 import System.Hardware.XBee.Command
 
 
@@ -38,7 +37,7 @@ data CommandResponse = CRData CommandIn
                      | CRTimeout deriving (Show, Eq)
 
 -- | Handler for the answers to a single command sent to the XBee.
-type CommandHandler a = Sink CommandResponse Identity a
+type CommandHandler a = ResponseM CommandResponse a
 
 -- | A command that expects an answer from the XBee.
 data FrameCmdSpec a   = FrameCmdSpec (FrameId -> CommandOut) (CommandHandler a)
@@ -51,9 +50,9 @@ data FramelessCmdSpec = FramelessCmdSpec CommandOut
 
 
 singleAnswer :: (CommandIn -> a) -> a -> CommandHandler a
-singleAnswer f failValue = SinkCont step (return failValue)
-    where step (CRData i) = return $ SinkDone (return $ f i)
-          step _          = return $ SinkDone (return failValue)
+singleAnswer f failValue = liftM convert fetch
+    where convert (CRData i) = f i
+          convert _          = failValue
 
 
 transmit f (XBeeAddress64 a) noack bdcst d = Transmit64 f a noack bdcst (take 100 d)

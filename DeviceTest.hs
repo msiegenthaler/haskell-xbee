@@ -9,6 +9,7 @@ import System.Hardware.XBee.Device
 import System.Hardware.XBee.DeviceCommand
 import System.Hardware.XBee.Connector.Handle
 import Control.Monad
+import Control.Concurrent.STM
 
 
 portFile = "/dev/tty.usbserial-A6003ThW"
@@ -17,7 +18,7 @@ tmout = fromMicroseconds 2000000 :: Second
 
 
 main = withSerialPort portFile portSettings body
-    where body h = do (xbee,xif) <- newDevice
+    where body h = do (xbee,xif) <- atomically $ newDevice
                       putStrLn "Starting XBee..."
                       connector <- connectToHandle xif h
                       putStrLn "XBee started."
@@ -28,15 +29,15 @@ main = withSerialPort portFile portSettings body
 
 execute xbee = do
         putStrLn "Reading the Address16"
-        a16 <- sendCommandAndWaitIO xbee (readAT address16 Local) tmout
+        a16 <- sendCommandAndWait xbee (readAT address16 Local) tmout
         putStrLn $ "  => " ++ (show a16)
         putStrLn "Setting the Address16 to 0x1234"
-        ok <- sendCommandAndWaitIO xbee (setAT address16 Local (Address16 0x1234)) tmout
+        ok <- sendCommandAndWait xbee (setAT address16 Local (Address16 0x1234)) tmout
         putStrLn $ "  => " ++ (show ok)
         putStrLn "Reading the Address16"
-        na16 <- sendCommandAndWaitIO xbee (readAT address16 Local) tmout
+        na16 <- sendCommandAndWait xbee (readAT address16 Local) tmout
         putStrLn $ "  => " ++ (show na16)
         putStrLn "Resetting the Address16"
         let (Right a16') = a16
-        ok <- sendCommandAndWaitIO xbee (setAT address16 Local a16') tmout
+        ok <- sendCommandAndWait xbee (setAT address16 Local a16') tmout
         putStrLn $ "  => " ++ (show ok)
