@@ -47,7 +47,7 @@ newCorrelator pv = liftM2 (Correlator pv) (newTVar initial) (newTVar [])
 
 -- | Monad to handle the response.
 -- Use fetch to read a value when inside the monad.
-data ResponseM i a = ResponseM { processResponse :: forall m . Monad m => m i -> m a }
+newtype ResponseM i a = ResponseM { processResponse :: forall m . Monad m => m i -> m a }
 
 instance Monad (ResponseM i) where
     return v = ResponseM (\_ -> return v)
