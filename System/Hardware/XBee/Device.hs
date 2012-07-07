@@ -8,10 +8,12 @@ module System.Hardware.XBee.Device (
     XBeeInterface(..),
     Scheduled(..),
     -- * Commands
-    FrameCmdSpec(..),
-    FramelessCmdSpec(..),
+    -- ** Types
+    CommandHandler,
+    CommandResponse(..),
+    FrameCmd(..),
+    -- ** Functions
     sendCommand,
-    sendCommandAndWait,
     fireCommand,
     -- * Source
     rawInSource,
@@ -22,7 +24,6 @@ module System.Hardware.XBee.Device (
 
 import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
-import System.Hardware.XBee.DeviceCommand
 import Data.List
 import Data.Word
 import Data.Time.Units
@@ -33,6 +34,21 @@ import Control.RequestResponseCorrelator
 import Data.SouSiT
 import Data.SouSiT.STM
 import qualified Data.SouSiT.Trans as T
+
+
+-- | Answers received to a command sent to the XBee.
+data CommandResponse = CRData CommandIn
+                     | CRPurged
+                     | CRTimeout deriving (Show, Eq)
+
+-- | Handler for the answers to a single command sent to the XBee.
+type CommandHandler a = ResponseM CommandResponse a
+
+-- | A command that expects an answer from the XBee.
+data FrameCmd a   = FrameCmd (FrameId -> CommandOut) (CommandHandler a)
+instance Functor FrameCmd where
+    fmap f (FrameCmd a handler) = FrameCmd a (fmap f handler)
+
 
 
 -- | Task to be scheduled. Delay in microseconds and the action to execute after the delay.
@@ -81,23 +97,19 @@ processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
           handle Nothing = return ()
 
 
-
 -- | Process a command and return a "future" for getting the response.
-sendCommand :: TimeUnit time => XBee -> FrameCmdSpec a -> time -> STM (STM a)
-sendCommand x (FrameCmdSpec cmd h) tmo = do
+sendCommand :: TimeUnit time => XBee -> time -> FrameCmd a -> STM (STM a)
+sendCommand x tmo (FrameCmd cmd h) = do
         (frame, future, feedFun) <- request (correlator x) h
         writeTChan (outQueue x) (cmd frame)
         writeTChan (scheduleQueue x) $ Scheduled tmoUs (atomically $ feedFun CRTimeout)
         return future
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
--- | Executes sendCommand and resultGet together (in two atomicallies).
-sendCommandAndWait x cmd t = atomically send >>= atomically
-    where send = sendCommand x cmd t
-
 -- | Sends a command without checking for a response.
-fireCommand :: XBee -> FramelessCmdSpec -> STM ()
-fireCommand x (FramelessCmdSpec cmd) = writeTChan (outQueue x) cmd
+fireCommand :: XBee -> CommandOut -> STM ()
+fireCommand x cmd = writeTChan (outQueue x) cmd
+
 
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
