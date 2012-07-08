@@ -23,9 +23,6 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State (runStateT)
-import Control.Monad.Trans.State (StateT)
-import Control.Monad.State.Class
 import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Reader.Class
 
