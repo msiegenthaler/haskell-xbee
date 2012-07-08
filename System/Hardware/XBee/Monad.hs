@@ -3,7 +3,7 @@
 module System.Hardware.XBee.Monad (
     execute,
     execute',
-    XBeeM,
+    XBeeCmd,
     Future,
     -- * Actions
     fire,
@@ -29,11 +29,11 @@ import Control.Monad.Reader.Class
 
 
 -- Monad for XBee commands.
-newtype XBeeM a = XBeeM { runXBeeM :: ReaderT XBee IO a }
+newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
     deriving (Monad, MonadIO, MonadReader XBee)
 
-runCommand :: XBeeM a -> XBee -> IO a
-runCommand m x = runReaderT (runXBeeM m) x
+runCommand :: XBeeCmd a -> XBee -> IO a
+runCommand m x = runReaderT (runXBeeCmd m) x
 
 -- | Executes an xbee command on the XBee.
 -- Waits until the result of the command is available.
@@ -48,13 +48,13 @@ newtype Future a = Future (STM a)
 
 -- | Sends a command without waiting for a response.
 -- Use noFrameId if the command supports frames.
-fire :: CommandOut -> XBeeM ()
+fire :: CommandOut -> XBeeCmd ()
 fire cmd = ask >>= exec
     where exec x = liftIO $ atomically $ fireCommand x cmd
 
 -- | Sends a command and waits for the response.
 -- The timeout set with "setTimeout" does apply.
-send :: TimeUnit time => time -> FrameCmd a -> XBeeM a
+send :: TimeUnit time => time -> FrameCmd a -> XBeeCmd a
 send tmo cmd = do
         x   <- ask
         fut <- liftIO $ atomically $ sendCommand x tmo cmd
@@ -62,14 +62,14 @@ send tmo cmd = do
 
 -- | Sends the command and returns a future to receive the result.
 -- The timeout set with "setTimeout" does apply.
-sendAsync :: TimeUnit time => time -> FrameCmd a -> XBeeM (Future a)
+sendAsync :: TimeUnit time => time -> FrameCmd a -> XBeeCmd (Future a)
 sendAsync tmo cmd = do
         x   <- ask
         fut <- liftIO $ atomically $ sendCommand x tmo cmd
         return $ Future fut
 
 -- | Returns a future that gets set to the supplied value after x microseconds.
-afterUs :: a -> Int -> XBeeM (Future a)
+afterUs :: a -> Int -> XBeeCmd (Future a)
 afterUs a us = do
         v <- liftIO $ registerDelay us
         return $ Future $ do
@@ -78,12 +78,12 @@ afterUs a us = do
             return a
 
 -- | Reads the value of a future. Waits until the future is available.
-getAsync :: Future a -> XBeeM a
+getAsync :: Future a -> XBeeCmd a
 getAsync (Future stm) = liftIO $ atomically stm
 
 -- | Reads the value of the future that completes first. Waits until the first future is
 -- available.
-getFastest :: [Future a] -> XBeeM a
+getFastest :: [Future a] -> XBeeCmd a
 getFastest = getAsync . fastestOf
 
 -- | Combines two futures into one by taking the one that completes faster.
