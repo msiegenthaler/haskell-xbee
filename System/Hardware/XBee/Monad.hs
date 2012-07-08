@@ -2,16 +2,16 @@
 
 module System.Hardware.XBee.Monad (
     execute,
-    execute',
     XBeeCmd,
+    XBeeCmdAsync,
     Future,
     -- * Actions
     fire,
     send,
-    sendAsync,
+    await,
+    awaitAny,
     afterUs,
-    getAsync,
-    getFastest,
+    instantly,
     fasterOf,
     fastestOf
 ) where
@@ -24,26 +24,33 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader (ReaderT)
 
 
--- Monad for XBee commands.
+newtype Future a = Future (STM a)
+
 newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
     deriving (Monad, MonadIO, MonadReader XBee)
 
-runCommand :: XBeeCmd a -> XBee -> IO a
-runCommand m x = runReaderT (runXBeeCmd m) x
+type XBeeCmdAsync a = XBeeCmd (Future a)
 
--- | Executes an xbee command on the XBee.
--- Waits until the result of the command is available.
-execute = flip runCommand
 
--- | Executes an xbee command on the XBee.
--- Waits until the result of the command is available.
-execute' x m = execute x (m >>= getAsync)
+-- | Execute an async xbee command.
+execute :: XBee -> XBeeCmdAsync a -> IO a
+execute x m = runReaderT (runXBeeCmd m') x
+    where m' = m >>= await
 
-newtype Future a = Future (STM a)
+
+-- | Reads the value of a future. Waits until the future is available.
+await :: Future a -> XBeeCmd a
+await = liftIO . atomically . unwrapFuture
+    where unwrapFuture (Future stm) = stm
+
+-- | Reads the value of the future that completes first. Waits until the first future is
+-- available.
+awaitAny :: [Future a] -> XBeeCmd a
+awaitAny = await . fastestOf
 
 
 -- | Sends a command without waiting for a response.
@@ -52,24 +59,15 @@ fire :: CommandOut -> XBeeCmd ()
 fire cmd = ask >>= exec
     where exec x = liftIO $ atomically $ fireCommand x cmd
 
--- | Sends a command and waits for the response.
--- The timeout set with "setTimeout" does apply.
-send :: TimeUnit time => time -> FrameCmd a -> XBeeCmd a
+-- | Sends a command.
+send :: TimeUnit time => time -> FrameCmd a -> XBeeCmdAsync a
 send tmo cmd = do
-        x   <- ask
-        fut <- liftIO $ atomically $ sendCommand x tmo cmd
-        liftIO $ atomically fut
-
--- | Sends the command and returns a future to receive the result.
--- The timeout set with "setTimeout" does apply.
-sendAsync :: TimeUnit time => time -> FrameCmd a -> XBeeCmd (Future a)
-sendAsync tmo cmd = do
         x   <- ask
         fut <- liftIO $ atomically $ sendCommand x tmo cmd
         return $ Future fut
 
 -- | Returns a future that gets set to the supplied value after x microseconds.
-afterUs :: a -> Int -> XBeeCmd (Future a)
+afterUs :: a -> Int -> XBeeCmdAsync a
 afterUs a us = do
         v <- liftIO $ registerDelay us
         return $ Future $ do
@@ -77,14 +75,9 @@ afterUs a us = do
             unless dne retry
             return a
 
--- | Reads the value of a future. Waits until the future is available.
-getAsync :: Future a -> XBeeCmd a
-getAsync (Future stm) = liftIO $ atomically stm
-
--- | Reads the value of the future that completes first. Waits until the first future is
--- available.
-getFastest :: [Future a] -> XBeeCmd a
-getFastest = getAsync . fastestOf
+-- | Returns a future that is instantly set to the supplied value.
+instantly :: a -> XBeeCmdAsync a
+instantly = return . Future . return
 
 -- | Combines two futures into one by taking the one that completes faster.
 fasterOf :: Future a -> Future a -> Future a

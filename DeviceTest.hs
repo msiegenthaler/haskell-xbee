@@ -22,12 +22,16 @@ main = withSerialPort portFile portSettings body
                       putStrLn "Starting XBee..."
                       connector <- connectToHandle xif h
                       putStrLn "XBee started."
-                      execute xbee
+                      exec xbee
                       putStrLn "Stopping XBee..."
                       stopConnector connector
                       putStrLn "XBee stopped."
 
-execute xbee = do
+exec :: XBee -> IO ()
+exec xbee = do
+        a16 <- execute xbee address16
+        putStrLn $ "Address16 = " ++ (show a16)
+  {-
         putStrLn "Reading the Address16"
         a16 <- sendCommandAndWait xbee (readAT address16 Local) tmout
         putStrLn $ "  => " ++ (show a16)
@@ -41,3 +45,4 @@ execute xbee = do
         let (Right a16') = a16
         ok <- sendCommandAndWait xbee (setAT address16 Local a16') tmout
         putStrLn $ "  => " ++ (show ok)
+  -}

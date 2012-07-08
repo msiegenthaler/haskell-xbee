@@ -1,9 +1,12 @@
 module System.Hardware.XBee.DeviceCommand (
+    execute,
     -- * Transmitting data
     transmitBytes,
     transmit,
     transmitNoAck,
-    broadcast
+    broadcast,
+    -- * Addressing
+    address16
 ) where
 
 import Data.Word
@@ -20,8 +23,8 @@ import System.Hardware.XBee.Command
 remoteTimeout = 10 :: Second
 localTimeout = 1 :: Second
 
-sendLocal  cmd handler = sendAsync localTimeout  (FrameCmd cmd handler)
-sendRemote cmd handler = sendAsync remoteTimeout (FrameCmd cmd handler)
+sendLocal  cmd handler = send localTimeout  (FrameCmd cmd handler)
+sendRemote cmd handler = send remoteTimeout (FrameCmd cmd handler)
 
 
 
@@ -32,8 +35,8 @@ transmitCmd (XBeeAddress64 a) noack bdcst d f = Transmit64 f a noack bdcst (take
 transmitCmd (XBeeAddress16 a) noack bdcst d f = Transmit16 f a noack bdcst (take transmitBytes d)
 
 -- | Sends up to 100 bytes to another XBee and requests an ack.
-transmit :: XBeeAddress -> [Word8] -> XBeeCmd (Future TransmitStatus)
-transmit to d = sendAsync remoteTimeout $ FrameCmd cmd (liftM handle fetch)
+transmit :: XBeeAddress -> [Word8] -> XBeeCmdAsync TransmitStatus
+transmit to d = sendRemote cmd (liftM handle fetch)
     where handle (CRData (TransmitResponse _ r)) = r
           handle _ = TransmitNoAck
           cmd = transmitCmd to False False d
@@ -48,11 +51,16 @@ broadcast :: [Word8] -> XBeeCmd ()
 broadcast d = fire $ transmitCmd (XBeeAddress64 broadcastAddress) True True d noFrameId
 
 
+failOnLeft :: Monad m => Either String a -> m a
+failOnLeft (Left err) = fail err
+failOnLeft (Right v)  = return v
+
+parse = runGet get . BS.pack
 
 
-address16 :: XBeeCmd (Future (Either String Address16))
-address16 = sendLocal cmd (liftM handle fetch)
+address16 :: XBeeCmdAsync Address16
+address16 = sendLocal cmd (liftM handle fetch >>= failOnLeft)
     where cmd f = ATCommand f (commandName 'M' 'Y') []
-          handle (CRData (ATCommandResponse _ _ CmdOK d)) = runGet get (BS.pack d)
+          handle (CRData (ATCommandResponse _ _ CmdOK d)) = parse d
           handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
           handle _ = Left "Timeout"
