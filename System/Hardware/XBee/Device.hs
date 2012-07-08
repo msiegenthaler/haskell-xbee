@@ -10,6 +10,7 @@ module System.Hardware.XBee.Device (
     -- * Commands
     -- ** Types
     CommandHandler,
+    fetch,
     CommandResponse(..),
     FrameCmd(..),
     -- ** Functions
