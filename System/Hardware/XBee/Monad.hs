@@ -1,8 +1,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module System.Hardware.XBee.Monad (
+    execute,
+    execute',
     XBeeM,
-    runCommand,
     Future,
     -- * Actions
     fire,
@@ -33,6 +34,14 @@ newtype XBeeM a = XBeeM { runXBeeM :: ReaderT XBee IO a }
 
 runCommand :: XBeeM a -> XBee -> IO a
 runCommand m x = runReaderT (runXBeeM m) x
+
+-- | Executes an xbee command on the XBee.
+-- Waits until the result of the command is available.
+execute = flip runCommand
+
+-- | Executes an xbee command on the XBee.
+-- Waits until the result of the command is available.
+execute' x m = execute x (m >>= getAsync)
 
 newtype Future a = Future (STM a)
 
