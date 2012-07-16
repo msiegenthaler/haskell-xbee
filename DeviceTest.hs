@@ -38,4 +38,7 @@ exec xbee = do
         nid <- execute xbee $ getAT nodeIdentifier
         putStrLn $ "NodeIdentifier = " ++ show nid
         execute xbee $ setAT nodeIdentifier "Mario's device"
+        pid <- execute xbee $ getAT panId
+        putStrLn $ "PAN-ID = " ++ show pid
+        -- Reset
         execute xbee $ setAT address16 a16

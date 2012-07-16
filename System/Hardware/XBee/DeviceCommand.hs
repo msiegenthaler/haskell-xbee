@@ -15,7 +15,8 @@ module System.Hardware.XBee.DeviceCommand (
     address16,
     address64,
     nodeIdentifierMaxLength,
-    nodeIdentifier
+    nodeIdentifier,
+    panId
 ) where
 
 import Data.Word
@@ -130,3 +131,8 @@ nodeIdentifierMaxLength = 20
 nodeIdentifier :: ATSetting String
 nodeIdentifier = mapAtSetting (atSetting 'N' 'I') unpackUtf8 enc
     where enc = Utf8String . takeBytes nodeIdentifierMaxLength
+
+-- | Used to set and read the PAN (Personal Area Network) ID of the xbee.
+--   Only modules with matching PAN IDs can communicate with each other
+panId :: ATSetting Word16
+panId = atSetting 'I' 'D'
