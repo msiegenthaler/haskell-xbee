@@ -16,7 +16,10 @@ module System.Hardware.XBee.DeviceCommand (
     address64,
     nodeIdentifierMaxLength,
     nodeIdentifier,
-    panId
+    panId,
+    -- * Various
+    hardwareVersion,
+    softwareReset
 ) where
 
 import Data.Word
@@ -136,3 +139,12 @@ nodeIdentifier = mapAtSetting (atSetting 'N' 'I') unpackUtf8 enc
 --   Only modules with matching PAN IDs can communicate with each other
 panId :: ATSetting Word16
 panId = atSetting 'I' 'D'
+
+-- | Hardware version of the xbee.
+hardwareVersion :: XBeeCmdAsync Word16
+hardwareVersion = atCommand 'H' 'V' ()
+
+-- | Used to force a software reset on the RF module. The reset simutates powering off
+-- and then on again the xbee module.
+softwareReset :: XBeeCmdAsync ()
+softwareReset = atCommand 'F' 'R' ()

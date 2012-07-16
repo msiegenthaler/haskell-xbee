@@ -40,5 +40,8 @@ exec xbee = do
         execute xbee $ setAT nodeIdentifier "Mario's device"
         pid <- execute xbee $ getAT panId
         putStrLn $ "PAN-ID = " ++ show pid
+        hv <- execute xbee hardwareVersion
+        putStrLn $ "Hardware Version = " ++ show hv
         -- Reset
         execute xbee $ setAT address16 a16
+        execute xbee softwareReset
