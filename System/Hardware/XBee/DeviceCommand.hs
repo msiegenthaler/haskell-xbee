@@ -12,10 +12,12 @@ module System.Hardware.XBee.DeviceCommand (
     getAT,
     setAT,
     -- * Addressing
-    address16
+    address16,
+    address64
 ) where
 
 import Data.Word
+import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Serialize
 import Data.Time.Units
@@ -62,10 +64,6 @@ failOnLeft (Left err) = fail err
 failOnLeft (Right v)  = return v
 
 
-address16 :: ATSetting Address16
-address16 = atSetting 'M' 'Y'
-
-
 atCommand :: (Serialize i, Serialize o) => Char -> Char -> i -> XBeeCmdAsync o
 atCommand c1 c2 i = sendLocal cmd (liftM handle fetch >>= failOnLeft)
     where cmd f = ATCommand f (commandName c1 c2) (ser i)
@@ -80,3 +78,18 @@ data ATSetting a = ATSetting { getAT :: XBeeCmdAsync a,
 
 atSetting :: Serialize a => Char -> Char -> ATSetting a
 atSetting c1 c2 = ATSetting (atCommand c1 c2 ()) (atCommand c1 c2)
+
+
+address16 :: ATSetting Address16
+address16 = atSetting 'M' 'Y'
+
+address64 :: XBeeCmdAsync Address64
+address64 = do
+        lf <- getAT $ a64p 'L'
+        hf <- getAT $ a64p 'H'
+        l <- await lf
+        h <- await hf
+        instantly $ Address64 $ (fromIntegral l) .|. (shift (fromIntegral h) 32)
+    where
+        a64p :: Char -> ATSetting Word32
+        a64p = atSetting 'S'

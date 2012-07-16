@@ -29,6 +29,8 @@ main = withSerialPort portFile portSettings body
 
 exec :: XBee -> IO ()
 exec xbee = do
+        a64 <- execute xbee address64
+        putStrLn $ "Address64 = " ++ (show a64)
         a16 <- execute xbee $ getAT address16
         putStrLn $ "Address16 = " ++ (show a16)
         execute xbee $ setAT address16 (Address16 0x1234)
