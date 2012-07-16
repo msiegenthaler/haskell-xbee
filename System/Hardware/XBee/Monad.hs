@@ -2,6 +2,7 @@
 
 module System.Hardware.XBee.Monad (
     execute,
+    execute',
     XBeeCmd,
     XBeeCmdAsync,
     Future,
@@ -21,6 +22,7 @@ import System.Hardware.XBee.Device (XBee,FrameCmd,CommandHandler,fireCommand,sen
 import System.Hardware.XBee.Command
 import Control.Concurrent.STM
 import Control.Applicative
+import Control.Exception as E
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Reader (runReaderT)
@@ -41,6 +43,11 @@ execute :: XBee -> XBeeCmdAsync a -> IO a
 execute x m = runReaderT (runXBeeCmd m') x
     where m' = m >>= await
 
+-- | Execute an async xbee command and catches any exception that occured.
+execute' :: XBee -> XBeeCmdAsync a -> IO (Either String a)
+execute' x m = E.catch (liftM Right $ execute x m) (return . Left . showE)
+    where showE :: SomeException -> String
+          showE = show
 
 -- | Reads the value of a future. Waits until the future is available.
 await :: Future a -> XBeeCmd a
