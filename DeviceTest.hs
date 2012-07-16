@@ -31,6 +31,7 @@ exec :: XBee -> IO ()
 exec xbee = do
         a16 <- execute xbee address16
         putStrLn $ "Address16 = " ++ (show a16)
+        execute xbee (setAddress16 (Address16 0x1234))
   {-
         putStrLn "Reading the Address16"
         a16 <- sendCommandAndWait xbee (readAT address16 Local) tmout

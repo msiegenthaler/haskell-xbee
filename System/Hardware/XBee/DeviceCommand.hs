@@ -6,7 +6,8 @@ module System.Hardware.XBee.DeviceCommand (
     transmitNoAck,
     broadcast,
     -- * Addressing
-    address16
+    address16,
+    setAddress16
 ) where
 
 import Data.Word
@@ -56,11 +57,19 @@ failOnLeft (Left err) = fail err
 failOnLeft (Right v)  = return v
 
 parse = runGet get . BS.pack
+ser = BS.unpack . runPut . put
 
 
 address16 :: XBeeCmdAsync Address16
 address16 = sendLocal cmd (liftM handle fetch >>= failOnLeft)
     where cmd f = ATCommand f (commandName 'M' 'Y') []
           handle (CRData (ATCommandResponse _ _ CmdOK d)) = parse d
+          handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
+          handle _ = Left "Timeout"
+
+setAddress16 :: Address16 -> XBeeCmdAsync ()
+setAddress16 a = sendLocal cmd (liftM handle fetch >>= failOnLeft)
+    where cmd f = ATCommand f (commandName 'M' 'Y') (ser a)
+          handle (CRData (ATCommandResponse _ _ CmdOK _)) = Right ()
           handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
           handle _ = Left "Timeout"
