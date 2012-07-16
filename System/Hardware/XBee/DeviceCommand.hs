@@ -128,4 +128,5 @@ nodeIdentifierMaxLength = 20
 
 -- | String to identify a node.
 nodeIdentifier :: ATSetting String
-nodeIdentifier = mapAtSetting (atSetting 'N' 'I') unpackUtf8 (Utf8String . takeBytes 100)
+nodeIdentifier = mapAtSetting (atSetting 'N' 'I') unpackUtf8 enc
+    where enc = Utf8String . takeBytes nodeIdentifierMaxLength
