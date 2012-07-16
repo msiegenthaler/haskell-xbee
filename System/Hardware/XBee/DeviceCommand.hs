@@ -5,9 +5,14 @@ module System.Hardware.XBee.DeviceCommand (
     transmit,
     transmitNoAck,
     broadcast,
+    -- * AT Settings
+    atCommand,
+    ATSetting,
+    atSetting,
+    getAT,
+    setAT,
     -- * Addressing
-    address16,
-    setAddress16
+    address16
 ) where
 
 import Data.Word
@@ -56,20 +61,22 @@ failOnLeft :: Monad m => Either String a -> m a
 failOnLeft (Left err) = fail err
 failOnLeft (Right v)  = return v
 
-parse = runGet get . BS.pack
-ser = BS.unpack . runPut . put
+
+address16 :: ATSetting Address16
+address16 = atSetting 'M' 'Y'
 
 
-address16 :: XBeeCmdAsync Address16
-address16 = sendLocal cmd (liftM handle fetch >>= failOnLeft)
-    where cmd f = ATCommand f (commandName 'M' 'Y') []
+atCommand :: (Serialize i, Serialize o) => Char -> Char -> i -> XBeeCmdAsync o
+atCommand c1 c2 i = sendLocal cmd (liftM handle fetch >>= failOnLeft)
+    where cmd f = ATCommand f (commandName c1 c2) (ser i)
           handle (CRData (ATCommandResponse _ _ CmdOK d)) = parse d
           handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
           handle _ = Left "Timeout"
+          ser = BS.unpack . runPut . put
+          parse = runGet get . BS.pack
 
-setAddress16 :: Address16 -> XBeeCmdAsync ()
-setAddress16 a = sendLocal cmd (liftM handle fetch >>= failOnLeft)
-    where cmd f = ATCommand f (commandName 'M' 'Y') (ser a)
-          handle (CRData (ATCommandResponse _ _ CmdOK _)) = Right ()
-          handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
-          handle _ = Left "Timeout"
+data ATSetting a = ATSetting { getAT :: XBeeCmdAsync a,
+                               setAT :: a -> XBeeCmdAsync () }
+
+atSetting :: Serialize a => Char -> Char -> ATSetting a
+atSetting c1 c2 = ATSetting (atCommand c1 c2 ()) (atCommand c1 c2)

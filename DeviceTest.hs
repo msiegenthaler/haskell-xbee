@@ -29,21 +29,8 @@ main = withSerialPort portFile portSettings body
 
 exec :: XBee -> IO ()
 exec xbee = do
-        a16 <- execute xbee address16
+        a16 <- execute xbee $ getAT address16
         putStrLn $ "Address16 = " ++ (show a16)
-        execute xbee (setAddress16 (Address16 0x1234))
-  {-
-        putStrLn "Reading the Address16"
-        a16 <- sendCommandAndWait xbee (readAT address16 Local) tmout
-        putStrLn $ "  => " ++ (show a16)
-        putStrLn "Setting the Address16 to 0x1234"
-        ok <- sendCommandAndWait xbee (setAT address16 Local (Address16 0x1234)) tmout
-        putStrLn $ "  => " ++ (show ok)
-        putStrLn "Reading the Address16"
-        na16 <- sendCommandAndWait xbee (readAT address16 Local) tmout
-        putStrLn $ "  => " ++ (show na16)
-        putStrLn "Resetting the Address16"
-        let (Right a16') = a16
-        ok <- sendCommandAndWait xbee (setAT address16 Local a16') tmout
-        putStrLn $ "  => " ++ (show ok)
-  -}
+        execute xbee $ setAT address16 (Address16 0x1234)
+        execute xbee (getAT address16) >>= putStrLn . ("New Address16 = " ++) . show
+        execute xbee $ setAT address16 a16
