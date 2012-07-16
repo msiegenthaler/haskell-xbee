@@ -32,6 +32,9 @@ import Control.Monad.Trans.Reader (ReaderT)
 
 newtype Future a = Future (STM a)
 
+instance Functor Future where
+    fmap f (Future stm) = Future $ liftM f stm
+
 newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
     deriving (Monad, MonadIO, MonadReader XBee)
 

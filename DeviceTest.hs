@@ -35,4 +35,7 @@ exec xbee = do
         putStrLn $ "Address16 = " ++ (show a16)
         execute xbee $ setAT address16 (Address16 0x1234)
         execute xbee (getAT address16) >>= putStrLn . ("New Address16 = " ++) . show
+        nid <- execute xbee $ getAT nodeIdentifier
+        putStrLn $ "NodeIdentifier = " ++ show nid
+        execute xbee $ setAT nodeIdentifier "Mario's device"
         execute xbee $ setAT address16 a16

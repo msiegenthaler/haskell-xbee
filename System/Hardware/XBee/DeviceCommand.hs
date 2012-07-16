@@ -13,7 +13,9 @@ module System.Hardware.XBee.DeviceCommand (
     setAT,
     -- * Addressing
     address16,
-    address64
+    address64,
+    nodeIdentifierMaxLength,
+    nodeIdentifier
 ) where
 
 import Data.Word
@@ -21,6 +23,7 @@ import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Serialize
 import Data.Time.Units
+import qualified Codec.Binary.UTF8.String as S
 import Control.Monad
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.Monad
@@ -80,9 +83,11 @@ atSetting :: Serialize a => Char -> Char -> ATSetting a
 atSetting c1 c2 = ATSetting (atCommand c1 c2 ()) (atCommand c1 c2)
 
 
+-- | 16-bit network address of the xbee.
 address16 :: ATSetting Address16
 address16 = atSetting 'M' 'Y'
 
+-- | Immutable 64-bit network address of the xbee.
 address64 :: XBeeCmdAsync Address64
 address64 = do
         lf <- getAT $ a64p 'L'
@@ -93,3 +98,34 @@ address64 = do
     where
         a64p :: Char -> ATSetting Word32
         a64p = atSetting 'S'
+
+
+newtype RawData = RawData BS.ByteString
+instance Serialize RawData where
+    get = remaining >>= getByteString >>= return . RawData
+    put (RawData bs) = putByteString bs
+
+newtype Utf8String = Utf8String { unpackUtf8 :: String }
+instance Serialize Utf8String where
+    get = remaining >>= getByteString >>= return . Utf8String . S.decode . BS.unpack
+    put = putByteString . BS.pack . S.encode . unpackUtf8
+
+-- | Shortens the string (removes at the end) to make sure that it can be encoded in utf-8
+--   in at most n characters.
+takeBytes :: Int -> String -> String
+takeBytes n = process . take n
+    where process [] = []
+          process i = let e = S.encode i in
+                if (length e) > n then process $ take ((length i) - 1) i
+                else i
+
+mapAtSetting :: ATSetting a -> (a -> b) -> (b -> a) -> ATSetting b
+mapAtSetting (ATSetting gf sf) f1 f2 = ATSetting gf' (sf . f2)
+    where gf' = liftM (fmap f1) gf
+
+
+nodeIdentifierMaxLength = 20
+
+-- | String to identify a node.
+nodeIdentifier :: ATSetting String
+nodeIdentifier = mapAtSetting (atSetting 'N' 'I') unpackUtf8 (Utf8String . takeBytes 100)
