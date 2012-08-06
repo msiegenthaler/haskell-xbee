@@ -29,6 +29,7 @@ import Data.Serialize
 import Data.Time.Units
 import qualified Codec.Binary.UTF8.String as S
 import Control.Monad
+import Control.Applicative
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.Monad
 import System.Hardware.XBee.Command
@@ -93,15 +94,14 @@ address16 = atSetting 'M' 'Y'
 
 -- | Immutable 64-bit network address of the xbee.
 address64 :: XBeeCmdAsync Address64
-address64 = do
-        lf <- getAT $ a64p 'L'
-        hf <- getAT $ a64p 'H'
-        l <- await lf
-        h <- await hf
-        instantly $ Address64 $ (fromIntegral l) .|. (shift (fromIntegral h) 32)
+address64 = combine <$> getAT (a64p 'L') <*> getAT (a64p 'H')
     where
         a64p :: Char -> ATSetting Word32
         a64p = atSetting 'S'
+        combine lf hf = do
+            l <- lf
+            h <- hf
+            return $ Address64 $ (fromIntegral l) .|. (shift (fromIntegral h) 32)
 
 
 newtype RawData = RawData BS.ByteString
