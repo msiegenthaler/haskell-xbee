@@ -9,6 +9,8 @@ module System.Hardware.XBee.Monad (
     -- * Actions
     fire,
     send,
+    -- * Reexports
+    liftIO,
     await,
     awaitAny,
     afterUs,
