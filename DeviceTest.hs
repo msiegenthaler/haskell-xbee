@@ -42,6 +42,9 @@ exec xbee = do
         putStrLn $ "PAN-ID = " ++ show pid
         hv <- execute xbee hardwareVersion
         putStrLn $ "Hardware Version = " ++ show hv
+        nodes <- execute xbee $ discover (2 :: Second)
+        putStrLn $ (show $ length nodes) ++ " XBees on the same network:"
+        mapM (putStrLn . ("   " ++) . show) nodes
         -- Reset
         execute xbee $ setAT address16 a16
         execute xbee softwareReset

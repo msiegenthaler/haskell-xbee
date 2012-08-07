@@ -17,6 +17,8 @@ module System.Hardware.XBee.DeviceCommand (
     nodeIdentifierMaxLength,
     nodeIdentifier,
     panId,
+    -- * Discover
+    discover,
     -- * Various
     hardwareVersion,
     softwareReset
@@ -148,3 +150,49 @@ hardwareVersion = atCommand 'H' 'V' ()
 -- and then on again the xbee module.
 softwareReset :: XBeeCmdAsync ()
 softwareReset = atCommand 'F' 'R' ()
+
+
+data NodeInformation = NodeInformation {
+    nodeAddress16 :: Address16,
+    nodeAddress64 :: Address64,
+    nodeSignalStrength :: SignalStrength,
+    nodeId :: String } deriving (Show,Eq)
+instance Serialize NodeInformation where
+    get = NodeInformation <$> get <*> get <*> get <*>
+        (get >>= return . takeWhile (/= '\0' ) . unpackUtf8)
+    put (NodeInformation a16 a64 sst nid) = put a16 >> put a64 >> put sst >> put (Utf8String nid)
+
+
+-- | Discovers all nodes on that can be reached from this xbee. Does not include this
+--   xbee.
+--   All modules on the current operating channel and PAN ID are found.
+discover :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
+discover tmo = setAT discoverTimeout (convertUnit tmo) >>= liftIO . await >>
+               setAT discoverSelfResponse False >>= liftIO . await >>
+               discover' tmo'
+    where tmo' = convertUnit tmo + localTimeout
+
+discover' :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
+discover' tmout = send tmout $ FrameCmd cmd (fetch >>= handle [])
+    where cmd f = ATCommand f (commandName 'N' 'D') []
+          handle :: [NodeInformation] -> CommandResponse -> CommandHandler [NodeInformation]
+          handle soFar (CRData (ATCommandResponse _ _ CmdOK [])) = return soFar
+          handle soFar (CRData (ATCommandResponse _ _ CmdOK d)) = do ni <- parse d
+                                                                     fetch >>= handle (ni:soFar)
+          handle soFar (CRData (ATCommandResponse _ _ status _)) = fail $ "Failed: " ++ show status
+          handle _ _ = fail "Timeout"
+          parse = failOnLeft . runGet get . BS.pack
+
+-- | Set/Get the node discover timeout (only used internally).
+discoverTimeout :: ATSetting Millisecond
+discoverTimeout = mapAtSetting (atSetting 'N' 'T') convertToMs (max 1 . min 252 . convertFromMs)
+    where nt :: ATSetting Word8
+          nt = atSetting 'N' 'T'
+          convertToMs :: Word8 -> Millisecond
+          convertToMs b = fromIntegral (b * 100)
+          convertFromMs :: Millisecond -> Word8
+          convertFromMs v = round $ (fromIntegral $ toMicroseconds v) / 100000
+
+-- | Controls if a node discover dows return the sender as well (only used internally).
+discoverSelfResponse :: ATSetting Bool
+discoverSelfResponse = atSetting 'N' 'O'
