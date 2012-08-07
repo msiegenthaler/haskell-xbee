@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module System.Hardware.XBee.Monad (
+module System.Hardware.XBee.XBeeCmd (
     execute,
     execute',
     XBeeCmd,
