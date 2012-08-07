@@ -39,7 +39,7 @@ import System.Hardware.XBee.Command
 
 -- TODO really have that as a fixed value?
 remoteTimeout = 10 :: Second
-localTimeout = 1 :: Second
+localTimeout = 2 :: Second
 
 sendLocal  cmd handler = send localTimeout  (FrameCmd cmd handler)
 sendRemote cmd handler = send remoteTimeout (FrameCmd cmd handler)
