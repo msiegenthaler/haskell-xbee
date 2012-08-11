@@ -1,5 +1,4 @@
 module System.Hardware.XBee.DeviceCommand (
-    execute,
     -- * Transmitting data
     transmitBytes,
     transmit,
@@ -33,7 +32,6 @@ import qualified Codec.Binary.UTF8.String as S
 import Control.Monad
 import Control.Applicative
 import System.Hardware.XBee.Device
-import System.Hardware.XBee.XBeeCmd
 import System.Hardware.XBee.Command
 
 

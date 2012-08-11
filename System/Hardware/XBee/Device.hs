@@ -1,26 +1,39 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, GeneralizedNewtypeDeriving #-}
 
 module System.Hardware.XBee.Device (
     -- * Device
     XBee,
     newDevice,
+    execute,
+    execute',
     -- * Device Interface
     XBeeInterface(..),
     Scheduled(..),
-    -- * Commands
-    -- ** Types
+    -- * Actions
+    XBeeCmd,
+    XBeeCmdAsync,
+    -- ** Fire (without response)
+    fire,
+    -- ** Send (with response)
+    send,
     CommandHandler,
-    fetch,
     CommandResponse(..),
     FrameCmd(..),
-    -- ** Functions
-    sendCommand,
-    fireCommand,
-    -- * Source
+    fetch,
+    -- ** Source
     rawInSource,
     ReceivedMessage(..),
     messagesSource,
     modemStatusSource,
+    -- * Reexports
+    Future,
+    liftIO,
+    await,
+    awaitAny,
+    afterUs,
+    instantly,
+    fasterOf,
+    fastestOf
 ) where
 
 import System.Hardware.XBee.Frame
@@ -29,7 +42,13 @@ import Data.List
 import Data.Word
 import Data.Time.Units
 import Control.Concurrent.STM
+import Control.Concurrent.Future
+import Control.Exception as E
 import Control.Monad
+import Control.Monad.Trans
+import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader (ReaderT)
 import Control.Applicative
 import Control.RequestResponseCorrelator
 import Data.SouSiT
@@ -75,8 +94,7 @@ data XBeeInterface = XBeeInterface {
                     --   This is used mainly for timeouts.
                     toSchedule :: BasicSource2 IO Scheduled }
 
-
--- | Create a new XBee device along with the corresponding interface.
+--- | Create a new XBee device along with the corresponding interface.
 newDevice :: STM (XBee, XBeeInterface)
 newDevice = do
         inQ  <- newTChan
@@ -98,7 +116,37 @@ processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
           handle Nothing = return ()
 
 
--- | Process a command and return a "future" for getting the response.
+newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
+    deriving (Monad, MonadIO, MonadReader XBee, Functor, Applicative)
+
+type XBeeCmdAsync a = XBeeCmd (Future a)
+
+
+-- | Execute an async xbee command.
+execute :: XBee -> XBeeCmdAsync a -> IO a
+execute x m = runReaderT (runXBeeCmd m) x >>= await
+
+-- | Execute an async xbee command and catches any exception that occured.
+execute' :: XBee -> XBeeCmdAsync a -> IO (Either String a)
+execute' x m = E.catch (liftM Right $ execute x m) (return . Left . showE)
+    where showE :: SomeException -> String
+          showE = show
+
+
+-- | Sends a command without waiting for a response.
+-- Use noFrameId if the command supports frames.
+fire :: CommandOut -> XBeeCmd ()
+fire cmd = liftM outQueue ask >>= enqueue cmd
+    where enqueue cmd q = liftIO $ atomically $ writeTChan q cmd
+
+
+-- | Sends a command.
+send :: TimeUnit time => time -> FrameCmd a -> XBeeCmdAsync a
+send tmo cmd = do
+        x   <- ask
+        fut <- liftIO $ atomically $ sendCommand x tmo cmd
+        return $ stmFuture fut
+
 sendCommand :: TimeUnit time => XBee -> time -> FrameCmd a -> STM (STM a)
 sendCommand x tmo (FrameCmd cmd h) = do
         (frame, future, feedFun) <- request (correlator x) h
@@ -107,19 +155,18 @@ sendCommand x tmo (FrameCmd cmd h) = do
         return future
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
--- | Sends a command without checking for a response.
-fireCommand :: XBee -> CommandOut -> STM ()
-fireCommand x cmd = writeTChan (outQueue x) cmd
-
-
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
--- that are also handled by sendCommand.
-rawInSource :: XBee -> BasicSource2 IO CommandIn
-rawInSource x = BasicSource2 first
-    where first sink = atomically (dupTChan (inQueue x)) >>= (flip step) sink
-          step c (SinkCont next _) = atomically (readTChan c) >>= next >>= step c
-          step c done = return done
+-- that are also handled by a CommandHandler from send.
+rawInSource :: BasicSource2 XBeeCmd CommandIn
+rawInSource = BasicSource2 first
+    where first s = liftM inQueue ask >>= liftIO . atomically . dupTChan >>= (flip step) s
+          step :: TChan a -> Sink a XBeeCmd r -> XBeeCmd (Sink a XBeeCmd r)
+          step q (SinkCont next _) = dequeue q >>= next >>= step q
+          step q done = return done
+
+dequeue :: TChan a -> XBeeCmd a
+dequeue = liftIO . atomically . readTChan
 
 -- | An incoming message (abstracts over Receive64 and Receive16)
 data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
@@ -136,12 +183,12 @@ commandInToReceivedMessage = T.filterMap step
           step _ = Nothing
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
-messagesSource :: XBee -> BasicSource IO ReceivedMessage
-messagesSource x = rawInSource x $= commandInToReceivedMessage
+messagesSource :: BasicSource XBeeCmd ReceivedMessage
+messagesSource = rawInSource $= commandInToReceivedMessage
 
 -- | Source for modem status updates.
-modemStatusSource :: XBee -> BasicSource IO ModemStatus
-modemStatusSource x = rawInSource x $= commandInToModemStatus
+modemStatusSource ::  BasicSource XBeeCmd ModemStatus
+modemStatusSource = rawInSource $= commandInToModemStatus
 
 commandInToModemStatus :: Transform CommandIn ModemStatus
 commandInToModemStatus = T.filterMap step
