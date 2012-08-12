@@ -48,5 +48,5 @@ instance Arbitrary TransmitStatus where
     arbitrary = elements $ enumFrom minBound
 
 instance Arbitrary SignalStrength where
-    arbitrary = liftM fromDbm (choose ((-255), 0))
+    arbitrary = liftM fromDbm (choose (-255, 0))
 

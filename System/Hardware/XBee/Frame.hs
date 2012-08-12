@@ -30,7 +30,7 @@ maxFrameData = 255
 
 -- | Create a frame from the data. All data exceeding maxFrameData is silently discarded.
 frame :: [Word8] -> Frame
-frame = Frame . (take maxFrameData)
+frame = Frame . take maxFrameData
 
 -- | The data the is contained within the frame.
 frameData :: Frame -> [Word8]
@@ -53,7 +53,7 @@ instance Serialize Frame where
         when (del /= startDelimiter) $ fail "missing start delimiter"
         len <- getWord16be
         when (fromIntegral len > maxFrameData) $ fail "invalid frame length"
-        d <- (liftM BS.unpack $ (getBytes . fromIntegral) len)
+        d <- liftM BS.unpack $ (getBytes . fromIntegral) len
         cs <- getWord8
         when (cs /= checksum d) $ fail "frame checksum is wrong"
         return $ Frame d

@@ -55,7 +55,7 @@ instance Monad (ResponseM i) where
         where f chan = fa chan >>= wrap . b
                 where wrap (ResponseM fb) = fb chan
 instance Functor (ResponseM i) where
-    fmap fun m = m >>= return . fun
+    fmap = liftM
 instance Applicative (ResponseM i) where
     pure = return
     a <*> b = do f <- a

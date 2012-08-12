@@ -29,7 +29,7 @@ import System.Hardware.XBee.Frame
 --   Pending timeouts are processed even after the sink is closed.
 timeoutSink :: Sink Scheduled IO ()
 timeoutSink = SinkCont next done
-    where next i = (return i) >>= forkIO . schedule >> return (SinkCont next done)
+    where next i = (forkIO . schedule) i >> return (SinkCont next done)
           done = return ()
           schedule (Scheduled time action) = threadDelay time >> action
 
@@ -47,7 +47,7 @@ sousiConnector c = XBeeConnector o close
           close = killThreadGroup
 
 -- | Parses CommandIn from ByteStrings.
-byteStringToCmdIn = (T.map BS.unpack) =$= T.disperse =$= bytesToCmdIn
+byteStringToCmdIn = T.map BS.unpack =$= T.disperse =$= bytesToCmdIn
 
 -- | Parses CommandIn from bytes.
 bytesToCmdIn = word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
@@ -56,7 +56,7 @@ bytesToCmdIn = word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
 cmdOutToByteString = T.map commandToFrame =$= T.map (runPut . put)
 
 -- | Serializes CommandOut into bytes.
-cmdOutToBytes = cmdOutToByteString =$= (T.map BS.unpack) =$= T.disperse
+cmdOutToBytes = cmdOutToByteString =$= T.map BS.unpack =$= T.disperse
 
 
 -- | Decorates a source/sink pair to also output everything received/sent to sysout.

@@ -14,7 +14,7 @@ data Latch = CountDownLatch (TVar Int)
 -- | A latch that will will allow the waiting thread(s) to continue as soon as onLatch
 --   has been called (at least) n times.
 newCountDownLatch :: Integral n => n -> STM Latch
-newCountDownLatch = (liftM CountDownLatch) . newTVar . fromIntegral
+newCountDownLatch = liftM CountDownLatch . newTVar . fromIntegral
 
 -- | Signal that the latch has been reached by a thread. Removes one 'token'.
 onLatch :: Latch -> STM ()

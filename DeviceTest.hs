@@ -37,18 +37,16 @@ cmd = do
         out "Hardware Version = " hardwareVersion
         setAT address16 a16 >>= await
         nodes <- discover (100 :: Millisecond) >>= await
-        mapM (output . ("   " ++) . formatNode) nodes
+        mapM_ (output . ("   " ++) . formatNode) nodes
         --fork $ out "Address64 from other Thread" address64
         output "Done"
 
 
-formatNode n = "Node " ++ (show $ nodeAddress64 n) ++ " with " ++ (show $ nodeSignalStrength n)
+formatNode n = "Node " ++ show (nodeAddress64 n) ++ " with " ++ show (nodeSignalStrength n)
 
-outputMsgs = do
-        messagesSource $$ T.map show =$ liftIOSink outSink
+outputMsgs = messagesSource $$ T.map show =$ liftIOSink outSink
 
-outputRaws = do
-        rawInSource $$ T.map show =$ liftIOSink outSink
+outputRaws = rawInSource $$ T.map show =$ liftIOSink outSink
 
 liftIOSink :: Sink a IO r -> Sink a XBeeCmd r
 liftIOSink (SinkCont n d) = SinkCont n' (liftIO d)
@@ -61,4 +59,4 @@ outSink = SinkCont o (return ())
 
 output = liftIO . putStrLn
 out pre c = c >>= await >>= o
-    where o i = output (pre ++ (show i))
+    where o i = output $ pre ++ show i

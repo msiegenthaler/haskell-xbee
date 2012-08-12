@@ -29,12 +29,12 @@ startThreadGroup actions = do
         return $ ThreadGroup done ts
     where 
         watchAndWait l e = (awaitLatch l >> return Nothing) `orElse` liftM Just (takeTMVar e)
-        handleResult ts (Just e) = mapM killThread ts >> return ()
+        handleResult ts (Just e) = mapM_ killThread ts
         handleResult _  Nothing  = return ()
 
 wrapExec doneLatch errorBox action = handle onError $ action >> onDone
     where onDone = atomically (onLatch doneLatch)        
-          onError e@(SomeException _) = atomically (tryPutTMVar errorBox e) >> return ()
+          onError e@(SomeException _) = void $ atomically (tryPutTMVar errorBox e)
 
 
 -- | Wait for all threads of the group to terminate. If a thread threw an exeception then this
@@ -47,4 +47,4 @@ awaitThreadGroup (ThreadGroup d _) = readMVar d >>= handle
 -- | Kills all threads in the thread group. This will result in awaitThreadGroup to throw 
 --   a thread killed.
 killThreadGroup :: ThreadGroup -> IO ()
-killThreadGroup (ThreadGroup _ ts) = mapM killThread ts >> return ()
+killThreadGroup (ThreadGroup _ ts) = mapM_ killThread ts

@@ -17,7 +17,7 @@ import Control.Monad
 ser :: Serialize s => s -> [Word8]
 ser = BS.unpack . runPut . put
 
-serParseTest s = (runGet get $ runPut $ put s) == Right s
+serParseTest s = runGet get (runPut $ put s) == Right s
 
 parse :: Serialize s => [Word8] -> Either String s
 parse = runGet get . BS.pack
@@ -89,7 +89,7 @@ transmitStatusSerializeParse = serParseTest
 -- Signal Strength
 
 signalStrengthSerializeParse :: SignalStrength -> Bool
-signalStrengthSerializeParse s = serParseTest s
+signalStrengthSerializeParse = serParseTest
 
 signalStrengthExample = parse [0x28] == Right (fromDbm (-40))
 

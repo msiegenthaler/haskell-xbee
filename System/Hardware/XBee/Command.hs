@@ -130,7 +130,7 @@ data TransmitStatus =
 newtype SignalStrength = SignalStrength Word8 deriving (Eq)
 -- | Signal strength in dBm (negative value, 0 is best).
 dBm :: SignalStrength -> Int
-dBm (SignalStrength s) = 0 - (fromIntegral s)
+dBm (SignalStrength s) = negate $ fromIntegral s
 -- | Creates a signal strength. Values >0 and <255 will be truncated to 0 resp. 255.
 fromDbm :: Int -> SignalStrength
 fromDbm v | v > 0      = SignalStrength 0
@@ -139,11 +139,12 @@ fromDbm v | v > 0      = SignalStrength 0
 instance Show SignalStrength where
     show = (++ " dBm") . show . dBm
 instance Ord SignalStrength where
-    a <= b = (dBm a) <= (dBm b)
+    a <= b = dBm a <= dBm b
 
 -- | Whether to apply to changes on the remote. If set to False then an AC command must be sent.
 type ApplyChanges = Bool
 
+{-# ANN module "HLint: ignore Use record patterns" #-}
 -- | Commands or responses sent from the XBee to the computer.
 data CommandIn =  ModemStatusUpdate ModemStatus
                 | ATCommandResponse FrameId CommandName CommandStatus [Word8]
@@ -217,20 +218,20 @@ instance Serialize CommandIn where
         put cmd >> put st >> putData d
     put (TransmitResponse f st) = putWord8 0x89 >> put f >> put st
     put (Receive64 a ss adbc panbc d) = putWord8 0x80 >> put a >> put ss >> put opts >> putData d
-        where opts = (bitOpt receiveBitAddress adbc) .|. (bitOpt receiveBitPan panbc)
+        where opts = bitOpt receiveBitAddress adbc .|. bitOpt receiveBitPan panbc
     put (Receive16 a ss adbc panbc d) = putWord8 0x81 >> put a >> put ss >> put opts >> putData d
-        where opts = (bitOpt receiveBitAddress adbc) .|. (bitOpt receiveBitPan panbc)
+        where opts = bitOpt receiveBitAddress adbc .|. bitOpt receiveBitPan panbc
     get = getWord8 >>= getCmdIn where
         getCmdIn 0x8A = liftM ModemStatusUpdate get
         getCmdIn 0x88 = liftM4 ATCommandResponse get get get getTillEnd
         getCmdIn 0x97 = RemoteATCommandResponse <$> get <*> get <*> get <*> get <*> get <*> getTillEnd
         getCmdIn 0x89 = liftM2 TransmitResponse get get
         getCmdIn 0x80 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create adr ss opts d =
-                    Receive64 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan) d
+            where create adr ss opts =
+                    Receive64 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan)
         getCmdIn 0x81 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create adr ss opts d =
-                    Receive16 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan) d
+            where create adr ss opts =
+                    Receive16 adr ss (testBit opts receiveBitAddress) (testBit opts receiveBitPan)
         getCmdIn o    = fail $ "undefined XBee->PC command " ++ show o
 receiveBitAddress = 1
 receiveBitPan = 2
@@ -243,9 +244,9 @@ instance Serialize CommandOut where
     put (RemoteATCommand16 f adr ac cmd d) = putWord8 0x17 >> put f >> putWord64be 0xFFFF >>
             put adr >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
     put (Transmit64 f adr dack bc d) = putWord8 0x00 >> put f >> put adr >> put opts >> putData d
-        where opts = (bitOpt transmitBitDisableAck dack) .|. (bitOpt transmitBitPanBroadcast bc)
+        where opts = bitOpt transmitBitDisableAck dack .|. bitOpt transmitBitPanBroadcast bc
     put (Transmit16 f adr dack bc d) = putWord8 0x01 >> put f >> put adr >> put opts >> putData d
-        where opts = (bitOpt transmitBitDisableAck dack) .|. (bitOpt transmitBitPanBroadcast bc)
+        where opts = bitOpt transmitBitDisableAck dack .|. bitOpt transmitBitPanBroadcast bc
     get = getWord8 >>= getCmdOut where
         getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
         getCmdOut 0x09 = ATQueueCommand <$> get <*> get <*> getTillEnd
@@ -253,17 +254,17 @@ instance Serialize CommandOut where
                 f     <- get
                 adr64 <- get
                 adr16 <- get
-                ac    <- liftM ((flip testBit) remoteAtCommandBitAC) getWord8
+                ac    <- liftM (`testBit` remoteAtCommandBitAC) getWord8
                 cmd   <- get
                 d     <- getTillEnd
                 return (if   adr64 /= broadcastAddress then RemoteATCommand64 f adr64 ac cmd d
                         else RemoteATCommand16 f adr16 ac cmd d)
         getCmdOut 0x00 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create f adr opts d =
-                    Transmit64 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast) d
+            where create f adr opts =
+                    Transmit64 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast)
         getCmdOut 0x01 = create <$> get <*> get <*> getWord8 <*> getTillEnd
-            where create f adr opts d =
-                    Transmit16 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast) d
+            where create f adr opts =
+                    Transmit16 f adr (testBit opts transmitBitDisableAck) (testBit opts transmitBitPanBroadcast)
         getCmdOut o    = fail $ "undefined PC->XBee command " ++ show o
 remoteAtCommandBitAC = 1
 transmitBitDisableAck = 1
@@ -271,7 +272,7 @@ transmitBitPanBroadcast = 3
 
 
 bitOpt :: Int -> Bool -> Word8
-bitOpt i b = if b then (bit i) else 0
+bitOpt i b = if b then bit i else 0
 
 getTillEnd :: Get [Word8]
 getTillEnd = liftM BS.unpack (remaining >>= getBytes)

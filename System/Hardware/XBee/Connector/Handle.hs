@@ -40,7 +40,7 @@ handleDebugConnector handle = sousiConnector (mk <$> handle)
     where mk h = debugToSysout (portCommandSource h, portCommandSink h)
 
 
-portSink h = hSink BS.hPut h
+portSink = hSink BS.hPut
 
 portCommandSink h = cmdOutToByteString =$ portSink h
 

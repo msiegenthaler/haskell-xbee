@@ -102,17 +102,17 @@ address64 = combine <$> getAT (a64p 'L') <*> getAT (a64p 'H')
         combine lf hf = do
             l <- lf
             h <- hf
-            return $ Address64 $ (fromIntegral l) .|. (shift (fromIntegral h) 32)
+            return $ Address64 $ fromIntegral l .|. fromIntegral h `shift` 32
 
 
 newtype RawData = RawData BS.ByteString
 instance Serialize RawData where
-    get = remaining >>= getByteString >>= return . RawData
+    get = liftM RawData (remaining >>= getByteString)
     put (RawData bs) = putByteString bs
 
 newtype Utf8String = Utf8String { unpackUtf8 :: String }
 instance Serialize Utf8String where
-    get = remaining >>= getByteString >>= return . Utf8String . S.decode . BS.unpack
+    get = liftM (Utf8String . S.decode . BS.unpack) (remaining >>= getByteString)
     put = putByteString . BS.pack . S.encode . unpackUtf8
 
 -- | Shortens the string (removes at the end) to make sure that it can be encoded in utf-8
@@ -121,7 +121,7 @@ takeBytes :: Int -> String -> String
 takeBytes n = process . take n
     where process [] = []
           process i = let e = S.encode i in
-                if (length e) > n then process $ take ((length i) - 1) i
+                if length e > n then process $ init i
                 else i
 
 mapAtSetting :: ATSetting a -> (a -> b) -> (b -> a) -> ATSetting b
@@ -158,7 +158,7 @@ data NodeInformation = NodeInformation {
     nodeId :: String } deriving (Show,Eq)
 instance Serialize NodeInformation where
     get = NodeInformation <$> get <*> get <*> get <*>
-        (get >>= return . takeWhile (/= '\0' ) . unpackUtf8)
+        liftM (takeWhile (/= '\0' ) . unpackUtf8) get
     put (NodeInformation a16 a64 sst nid) = put a16 >> put a64 >> put sst >> put (Utf8String nid)
 
 
@@ -190,7 +190,7 @@ discoverTimeout = mapAtSetting (atSetting 'N' 'T') convertToMs (max 1 . min 252 
           convertToMs :: Word8 -> Millisecond
           convertToMs b = fromIntegral (b * 100)
           convertFromMs :: Millisecond -> Word8
-          convertFromMs v = round $ (fromIntegral $ toMicroseconds v) / 100000
+          convertFromMs v = round $ fromIntegral (toMicroseconds v) / 100000
 
 -- | Controls if a node discover dows return the sender as well (only used internally).
 discoverSelfResponse :: ATSetting Bool

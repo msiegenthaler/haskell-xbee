@@ -118,7 +118,7 @@ data XBeeConnector a = XBeeConnector {
 -- | Runs an XBee command with the specified connector.
 runXBee :: XBeeConnector x -> XBeeCmd a -> IO a
 runXBee connector cmd = do
-        (xbee, xif) <- atomically $ newDevice
+        (xbee, xif) <- atomically newDevice
         bracket (openConnector connector xif) (closeConnector connector) (run xbee)
     where run x _ = execute x cmd <* atomically (awaitZero (users x))
 
@@ -158,7 +158,7 @@ processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
 
 -- | Forks a new thread that executes XBeeCmd
 fork :: XBeeCmd a -> XBeeCmd C.ThreadId
-fork cmd = ask >>= exec (cmd >> return ())
+fork cmd = ask >>= exec (void cmd)
     where exec cmd x = liftIO $ C.forkIO $ execute x cmd
 
 
@@ -205,7 +205,7 @@ data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
 -- that are also handled by a CommandHandler from send.
 rawInSource :: BasicSource2 XBeeCmd CommandIn
 rawInSource = BasicSource2 first
-    where first s = liftM inQueue ask >>= liftIO . atomically . dupTChan >>= (flip step) s
+    where first s = liftM inQueue ask >>= liftIO . atomically . dupTChan >>= flip step s
           step :: TChan a -> Sink a XBeeCmd r -> XBeeCmd (Sink a XBeeCmd r)
           step q (SinkCont next _) = dequeue q >>= next >>= step q
           step q done = return done

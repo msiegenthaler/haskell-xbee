@@ -48,7 +48,7 @@ instantly = return
 
 -- | Returns a future that gets set to the supplied value after x microseconds.
 afterUs :: a -> Int -> IO (Future a)
-afterUs a us = registerDelay us >>= return . Future . mkFuture
+afterUs a us = liftM (Future . mkFuture) (registerDelay us)
     where mkFuture v = readTVar v >>= flip unless retry >> return a
 
 
