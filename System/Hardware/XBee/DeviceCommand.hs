@@ -17,6 +17,7 @@ module System.Hardware.XBee.DeviceCommand (
     nodeIdentifier,
     panId,
     -- * Discover
+    NodeInformation(..),
     discover,
     -- * Various
     hardwareVersion,
