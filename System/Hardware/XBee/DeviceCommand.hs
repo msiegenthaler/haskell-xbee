@@ -166,8 +166,8 @@ instance Serialize NodeInformation where
 --   xbee.
 --   All modules on the current operating channel and PAN ID are found.
 discover :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
-discover tmo = setAT discoverTimeout (convertUnit tmo) >>= liftIO . await >>
-               setAT discoverSelfResponse False >>= liftIO . await >>
+discover tmo = setAT discoverTimeout (convertUnit tmo) >>= await >>
+               setAT discoverSelfResponse False >>= await >>
                discover' tmo'
     where tmo' = convertUnit tmo + localTimeout
 

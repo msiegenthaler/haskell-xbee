@@ -17,35 +17,25 @@ portSettings = defaultSettings { baudRate = B9600 }
 tmout = fromMicroseconds 2000000 :: Second
 
 
-main = withSerialPort portFile portSettings body
-    where body h = do (xbee,xif) <- atomically $ newDevice
-                      putStrLn "Starting XBee..."
-                      connector <- connectToHandle xif h
-                      putStrLn "XBee started."
-                      exec xbee
-                      putStrLn "Stopping XBee..."
-                      stopConnector connector
-                      putStrLn "XBee stopped."
+main = runXBee con cmd
+    where con = handleConnector $ openSerialPort portFile portSettings
 
-exec :: XBee -> IO ()
-exec xbee = do
-        a64 <- execute xbee address64
-        putStrLn $ "Address64 = " ++ (show a64)
-        a16 <- execute xbee $ getAT address16
-        putStrLn $ "Address16 = " ++ (show a16)
-        execute xbee $ setAT address16 (Address16 0x1234)
-        execute xbee (getAT address16) >>= putStrLn . ("New Address16 = " ++) . show
-        nid <- execute xbee $ getAT nodeIdentifier
-        putStrLn $ "NodeIdentifier = " ++ show nid
-        execute xbee $ setAT nodeIdentifier "Mario's device"
-        pid <- execute xbee $ getAT panId
-        putStrLn $ "PAN-ID = " ++ show pid
-        hv <- execute xbee hardwareVersion
-        putStrLn $ "Hardware Version = " ++ show hv
-        nodes <- execute xbee $ discover (500 :: Millisecond)
-        putStrLn $ (show $ length nodes) ++ " XBees on the same network:"
-        mapM (putStrLn . ("   " ++) . show) nodes
-        -- Reset
-        execute xbee $ setAT address16 a16
-        execute xbee softwareReset
-        putStrLn "Reset performed"
+cmd = do
+        out "Address64 = " address64
+        a16 <- getAT address16 >>= await
+        output $ "Address16 = " ++ show a16
+        setAT address16 (Address16 0x1234) >>= await
+        out "New Address16 = " $ getAT address16
+        out "NodeIdentifier = " $ getAT nodeIdentifier
+        out "PAN-ID = " $ getAT panId
+        out "Hardware Version = " hardwareVersion
+        setAT address16 a16 >>= await
+        nodes <- discover (300 :: Millisecond) >>= await
+        mapM (output . ("   " ++) . formatNode) nodes
+        output "Done"
+    where formatNode n = "Node " ++ (show $ nodeAddress64 n) ++ " with " ++
+                             (show $ nodeSignalStrength n)
+
+output = liftIO . putStrLn
+out pre c = c >>= await >>= o
+    where o i = output (pre ++ (show i))

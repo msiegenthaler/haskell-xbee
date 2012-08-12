@@ -2,11 +2,9 @@
 
 module System.Hardware.XBee.Device (
     -- * Device
-    XBee,
-    newDevice,
-    execute,
-    execute',
+    runXBee,
     -- * Device Interface
+    XBeeConnector(..),
     XBeeInterface(..),
     Scheduled(..),
     -- * Actions
@@ -19,21 +17,22 @@ module System.Hardware.XBee.Device (
     CommandHandler,
     CommandResponse(..),
     FrameCmd(..),
-    fetch,
     -- ** Source
     rawInSource,
     ReceivedMessage(..),
     messagesSource,
     modemStatusSource,
-    -- * Reexports
+    -- ** Future
     Future,
-    liftIO,
     await,
     awaitAny,
     afterUs,
     instantly,
     fasterOf,
-    fastestOf
+    fastestOf,
+    -- * Reexports
+    liftIO,
+    fetch
 ) where
 
 import System.Hardware.XBee.Frame
@@ -42,7 +41,8 @@ import Data.List
 import Data.Word
 import Data.Time.Units
 import Control.Concurrent.STM
-import Control.Concurrent.Future
+import Control.Concurrent.Future hiding (await,awaitAny,afterUs)
+import qualified Control.Concurrent.Future as F
 import Control.Exception as E
 import Control.Monad
 import Control.Monad.Trans
@@ -106,6 +106,21 @@ data XBeeInterface = XBeeInterface {
                     --   This is used mainly for timeouts.
                     toSchedule :: BasicSource2 IO Scheduled }
 
+-- | Connects an XBee device to a "backend", i.e. a serial port.
+data XBeeConnector a = XBeeConnector {
+        openConnector :: XBeeInterface -> IO a,
+        closeConnector :: a -> IO () }
+
+
+-- | Runs an XBee command with the specified connector.
+runXBee :: XBeeConnector x -> XBeeCmd a -> IO a
+runXBee connector cmd = do
+        (xbee, xif) <- atomically $ newDevice
+        bracket (openConnector connector xif) (closeConnector connector) (run xbee)
+    where run x _ = execute x cmd
+
+execute :: XBee -> XBeeCmd a -> IO a
+execute x m = runReaderT (runXBeeCmd m) x
 
 --- | Create a new XBee device along with the corresponding interface.
 newDevice :: STM (XBee, XBeeInterface)
@@ -129,16 +144,12 @@ processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
           handle Nothing = return ()
 
 
--- | Execute an async xbee command.
-execute :: XBee -> XBeeCmdAsync a -> IO a
-execute x m = runReaderT (runXBeeCmd m) x >>= await
-
--- | Execute an async xbee command and catches any exception that occured.
-execute' :: XBee -> XBeeCmdAsync a -> IO (Either String a)
-execute' x m = E.catch (liftM Right $ execute x m) (return . Left . showE)
-    where showE :: SomeException -> String
-          showE = show
-
+-- IO lifted functions from Future
+liftIO' :: IO a -> XBeeCmd a
+liftIO' = liftIO
+await = liftIO' . F.await
+awaitAny = liftIO' . F.awaitAny
+afterUs a us = liftIO' $ F.afterUs a us
 
 -- | Sends a command without waiting for a response.
 -- Use noFrameId if the command supports frames.

@@ -1,7 +1,5 @@
 module System.Hardware.XBee.Connector.Handle (
-    connectToHandle,
-    Connector,
-    stopConnector
+    handleConnector
 ) where
 
 import Prelude hiding (catch)
@@ -21,21 +19,21 @@ import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Connector.Common
 
 
-type Connector = ThreadGroup
-type StopAction = IO ()
+type HandleConnector = XBeeConnector ThreadGroup
 
--- | Connects the XBeeInterface to a handle. The handle must be open in ReadWrite. EOFs
---   are ignored.
---   The scheduler is started (using Common.timeoutSink).
-connectToHandle :: XBeeInterface -> Handle -> IO Connector
-connectToHandle xif h = startThreadGroup [ toSchedule xif $$ timeoutSink,
-                                           src $$ incoming xif,
-                                           outgoing xif $$ sink ]
+-- | XBee connector that uses a ReadWrite handle as the backing interface. EOFs are ignored.
+handleConnector :: IO Handle -> HandleConnector
+handleConnector h = XBeeConnector o close
+    where o xif = h >>= open xif
+
+open xif h = startThreadGroup [ toSchedule xif $$ timeoutSink,
+                                src $$ incoming xif,
+                                outgoing xif $$ sink ]
     where src = commandSource h
           sink = commandSink h
 
--- | Stops that connector (started with connectToHandle).
-stopConnector = killThreadGroup
+close = killThreadGroup
+
 
 
 fetchSize = 256
