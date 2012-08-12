@@ -30,12 +30,18 @@ connector2 = connector' "/dev/tty.usbserial-A6003TfN" $ defaultSettings { baudRa
 
 
 main = withSysoutPrint $ startThreadGroup [
-                runXBee connector1 $ sayHi >> showPeers >> sayHiToAll,
-                runXBee connector2 $ sayHi >> receiveMsgs
+                runXBee connector1 $ initXBee "One" >> sayHi >> showPeers >> sayHiToAll >> sayBye,
+                runXBee connector2 $ initXBee "Two" >> sayHi >> echoMsgs
             ] >>= awaitThreadGroup >> printLn "Done."
           
 
-sayHi = out "XBee connected: " address64
+initXBee n = do a <- setAT address16 disabledAddress
+                n <- setAT nodeIdentifier n
+                await (a >> n)
+
+sayHi = do a <- address64 >>= await
+           i <- getAT nodeIdentifier >>= await
+           output $ "XBee connected: " ++ show a ++ " (" ++ show i ++ ")"
 
 diagnostics = do
         out "Address64 = " address64
@@ -53,18 +59,20 @@ showPeers = do
         nodes <- discover (300 :: Millisecond) >>= await
         output $ "Found " ++ show (length nodes) ++ " peers:"
         mapM_ (output . ("   " ++) . formatNode) nodes
-    where formatNode n = "Node " ++ show (nodeAddress64 n) ++ " with " ++
+    where formatNode n = "- " ++ show (nodeAddress64 n) ++ " with " ++
                 show (nodeSignalStrength n)
 
 sayHiToAll = do
         broadcast $ S.encode "Hi everybody"
         nodes <- discover (300 :: Millisecond) >>= await
         output $ "Saying hi to all " ++ show (length nodes) ++ " peers"
-        mapM_ sendHi nodes
+        c <- mapM sendHi nodes
+        mapM_ await c
     where sendHi n = transmit to $ S.encode $ "Hi, you're " ++ show (nodeAddress64 n)
             where to = XBeeAddress64 $ nodeAddress64 n
 
 
+sayBye = broadcast endSignal
 
 receiveMsgs = output "Waiting for messages.." >> outputMsgs
 
@@ -75,6 +83,20 @@ outputMsgs = messagesSource $$ T.map format =$ liftIOSink outSink
 
 
 outputRaws = rawInSource $$ T.map show =$ liftIOSink outSink
+
+
+endSignal = [0]
+
+echoMsgs = messagesSource $$ decorated (replySink (fun . messageBody))
+    where fun body | body == endSignal = Nothing
+                   | otherwise         = Just $ S.encode "You said " ++ body
+          decorated = decorateSink (output . ("> echoing to: " ++) . S.decode . messageBody)
+
+replySink :: (ReceivedMessage -> Maybe [Word8]) -> Sink ReceivedMessage XBeeCmd ()
+replySink f = SinkCont next (return ())
+    where next msg = case f msg of
+                        (Just a) -> transmit (sender msg) a >>= await >> return (replySink f)
+                        Nothing  -> return $ SinkDone (return ())
 
 
 liftIOSink :: Sink a IO r -> Sink a XBeeCmd r
