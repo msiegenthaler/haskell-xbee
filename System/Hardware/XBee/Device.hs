@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module System.Hardware.XBee.Device (
     -- * Device
