@@ -163,11 +163,11 @@ fork cmd = ask >>= exec (cmd >> return ())
 
 
 -- IO lifted functions from Future
-liftIO' :: IO a -> XBeeCmd a
-liftIO' = liftIO
 await = liftIO' . F.await
 awaitAny = liftIO' . F.awaitAny
 afterUs a us = liftIO' $ F.afterUs a us
+liftIO' :: IO a -> XBeeCmd a
+liftIO' = liftIO
 
 -- | Sends a command without waiting for a response.
 -- Use noFrameId if the command supports frames.
