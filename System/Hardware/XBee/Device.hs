@@ -199,7 +199,7 @@ data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
                                          signal :: SignalStrength,
                                          addressBroadcast :: Bool,
                                          panBroadcast :: Bool,
-                                         messageBody :: [Word8] }
+                                         messageBody :: [Word8] } deriving (Show,Eq)
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by a CommandHandler from send.
