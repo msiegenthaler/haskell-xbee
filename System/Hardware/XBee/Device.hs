@@ -56,6 +56,16 @@ import Data.SouSiT.STM
 import qualified Data.SouSiT.Trans as T
 
 
+-- | Command monad for a XBees.
+newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
+    deriving (Monad, MonadIO, MonadReader XBee, Functor, Applicative)
+
+-- | Command monad with a future as the result.
+type XBeeCmdAsync a = XBeeCmd (Future a)
+
+
+
+
 -- | Answers received to a command sent to the XBee.
 data CommandResponse = CRData CommandIn
                      | CRPurged
@@ -76,12 +86,14 @@ data Scheduled = Scheduled Int (IO ())
 
 type XBeeCorrelator =  Correlator FrameId CommandResponse
 
+
+
+
 -- | Opaque representation of the locally attached XBee device.
 data XBee = XBee { scheduleQueue :: TChan Scheduled,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
                    correlator :: XBeeCorrelator }
-
 
 -- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
 --   actual device. See i.e. the HandleDeviceConnector module.
@@ -93,6 +105,7 @@ data XBeeInterface = XBeeInterface {
                     -- | Actions to be scheduled with the specified delay.
                     --   This is used mainly for timeouts.
                     toSchedule :: BasicSource2 IO Scheduled }
+
 
 --- | Create a new XBee device along with the corresponding interface.
 newDevice :: STM (XBee, XBeeInterface)
@@ -114,12 +127,6 @@ processIn :: XBeeCorrelator -> TChan CommandIn -> CommandIn -> STM ()
 processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
     where handle (Just frame) = push corr frame (CRData msg)
           handle Nothing = return ()
-
-
-newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
-    deriving (Monad, MonadIO, MonadReader XBee, Functor, Applicative)
-
-type XBeeCmdAsync a = XBeeCmd (Future a)
 
 
 -- | Execute an async xbee command.
@@ -156,6 +163,15 @@ sendCommand x tmo (FrameCmd cmd h) = do
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
 
+
+
+-- | An incoming message (abstracts over Receive64 and Receive16)
+data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
+                                         signal :: SignalStrength,
+                                         addressBroadcast :: Bool,
+                                         panBroadcast :: Bool,
+                                         messageBody :: [Word8] }
+
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by a CommandHandler from send.
 rawInSource :: BasicSource2 XBeeCmd CommandIn
@@ -167,13 +183,6 @@ rawInSource = BasicSource2 first
 
 dequeue :: TChan a -> XBeeCmd a
 dequeue = liftIO . atomically . readTChan
-
--- | An incoming message (abstracts over Receive64 and Receive16)
-data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
-                                         signal :: SignalStrength,
-                                         addressBroadcast :: Bool,
-                                         panBroadcast :: Bool,
-                                         messageBody :: [Word8] }
 
 -- Transformer for CommandIn into ReceivedMessage.
 commandInToReceivedMessage :: Transform CommandIn ReceivedMessage
