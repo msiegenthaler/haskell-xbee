@@ -10,6 +10,7 @@ module System.Hardware.XBee.Device (
     -- * Actions
     XBeeCmd,
     XBeeCmdAsync,
+    fork,
     -- ** Fire (without response)
     fire,
     -- ** Send (with response)
@@ -40,6 +41,7 @@ import System.Hardware.XBee.Command
 import Data.List
 import Data.Word
 import Data.Time.Units
+import qualified Control.Concurrent as C
 import Control.Concurrent.STM
 import Control.Concurrent.Future hiding (await,awaitAny,afterUs)
 import qualified Control.Concurrent.Future as F
@@ -93,7 +95,8 @@ type XBeeCorrelator =  Correlator FrameId CommandResponse
 data XBee = XBee { scheduleQueue :: TChan Scheduled,
                    outQueue  :: TChan CommandOut,
                    inQueue   :: TChan CommandIn,
-                   correlator :: XBeeCorrelator }
+                   correlator :: XBeeCorrelator,
+                   users :: TVar Int }
 
 -- | Interface to an XBee. This is 'side' of the xbee that needs to be attached to the
 --   actual device. See i.e. the HandleDeviceConnector module.
@@ -117,10 +120,18 @@ runXBee :: XBeeConnector x -> XBeeCmd a -> IO a
 runXBee connector cmd = do
         (xbee, xif) <- atomically $ newDevice
         bracket (openConnector connector xif) (closeConnector connector) (run xbee)
-    where run x _ = execute x cmd
+    where run x _ = execute x cmd <* atomically (awaitZero (users x))
+
+awaitZero :: TVar Int -> STM ()
+awaitZero v = readTVar v >>= w
+    where w 0 = return ()
+          w _ = retry
 
 execute :: XBee -> XBeeCmd a -> IO a
-execute x m = runReaderT (runXBeeCmd m) x
+execute x cmd = bracket_ allocate deallocate run
+    where run = runReaderT (runXBeeCmd cmd) x
+          allocate = atomically $ modifyTVar (users x) (+ 1)
+          deallocate = atomically $ modifyTVar (users x) (subtract 1)
 
 --- | Create a new XBee device along with the corresponding interface.
 newDevice :: STM (XBee, XBeeInterface)
@@ -129,7 +140,8 @@ newDevice = do
         outQ <- newTChan
         scdQ <- newTChan
         corr <- newCorrelator CRPurged
-        let xbee = XBee scdQ outQ inQ corr
+        uc   <- newTVar 0
+        let xbee = XBee scdQ outQ inQ corr uc
         let xif  = mkXif inQ outQ scdQ corr
         return (xbee, xif)
 
@@ -142,6 +154,12 @@ processIn :: XBeeCorrelator -> TChan CommandIn -> CommandIn -> STM ()
 processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
     where handle (Just frame) = push corr frame (CRData msg)
           handle Nothing = return ()
+
+
+-- | Forks a new thread that executes XBeeCmd
+fork :: XBeeCmd a -> XBeeCmd C.ThreadId
+fork cmd = ask >>= exec (cmd >> return ())
+    where exec cmd x = liftIO $ C.forkIO $ execute x cmd
 
 
 -- IO lifted functions from Future

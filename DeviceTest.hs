@@ -9,6 +9,7 @@ import System.Hardware.XBee.Device
 import System.Hardware.XBee.DeviceCommand
 import System.Hardware.XBee.Connector.Handle
 import Control.Monad
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM
 
 
@@ -32,6 +33,10 @@ cmd = do
         setAT address16 a16 >>= await
         nodes <- discover (300 :: Millisecond) >>= await
         mapM (output . ("   " ++) . formatNode) nodes
+        fork $ do
+            liftIO $ threadDelay 100000
+            out "Address64 from other Thread" address64
+        out "Address64 from main Thread" address64
         output "Done"
     where formatNode n = "Node " ++ (show $ nodeAddress64 n) ++ " with " ++
                              (show $ nodeSignalStrength n)
