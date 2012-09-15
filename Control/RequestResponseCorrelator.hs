@@ -31,9 +31,9 @@ instance Circular Id where
 
 data Entry c i = Entry Id c (TChan i)
 
-data Correlator c i = Correlator { purgeValue :: i,
-                                   currentId  :: TVar Id,
-                                   inProgress :: TVar [Entry c i] }
+data Correlator c i = Correlator i                  -- purge value
+                                 (TVar Id)          -- current id
+                                 (TVar [Entry c i]) -- in progress
 
 
 -- | Create a new correlator.
@@ -109,7 +109,7 @@ allocateKey es = case findFree keys of
 push :: Eq c => Correlator c i -> c -> i -> STM ()
 push (Correlator _ _ ipV) key value = do
         es <- readTVar ipV
-        process $ find (byKey key) es
-    where byKey key (Entry _ k _) = key == k
+        process $ find byKey es
+    where byKey (Entry _ k _) = key == k
           process (Just (Entry _ _ c)) = writeTChan c value
           process Nothing = return ()
