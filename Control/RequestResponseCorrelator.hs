@@ -10,16 +10,14 @@ module Control.RequestResponseCorrelator (
     -- * Request / Push
     request,
     requestAndWait,
-    push,
-    -- * Response processing
-    ResponseM,
-    processResponse,
-    fetch
+    push
 ) where
 
 import Data.Word
 import Data.List
 import Data.Circular
+import Data.SouSiT
+import Data.SouSiT.Source
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Applicative
@@ -45,51 +43,32 @@ newCorrelator :: Circular c =>
 newCorrelator pv = liftM2 (Correlator pv) (newTVar initial) (newTVar [])
 
 
--- | Monad to handle the response.
--- Use fetch to read a value when inside the monad.
-newtype ResponseM i a = ResponseM { processResponse :: forall m . Monad m => m i -> m a }
-
-instance Monad (ResponseM i) where
-    return v = ResponseM (\_ -> return v)
-    (ResponseM fa) >>= b = ResponseM f
-        where f chan = fa chan >>= wrap . b
-                where wrap (ResponseM fb) = fb chan
-instance Functor (ResponseM i) where
-    fmap = liftM
-instance Applicative (ResponseM i) where
-    pure = return
-    a <*> b = do f <- a
-                 x <- b
-                 return $ f x
-
-
--- | Reads a response value. Waits until available.
-fetch = ResponseM id
-
-
 -- | Sends a request and waits for the response.
 requestAndWait :: Circular c => Correlator c i
-    -> (c -> IO ())   -- ^ Function used to send the response.
-    -> ResponseM i a  -- ^ Monad to process the response.
+    -> (c -> IO ())  -- ^ Function used to send the response.
+    -> Fetch i a     -- ^ Sink to process the response.
     -> IO a
 requestAndWait corr sf rm = do
     (c,future,_) <- atomically $ request corr rm
     sf c
     atomically future
 
--- | Registers a response processor (ResponseM) with the correlator and returns a
+-- | Registers a response processor (Sink) with the correlator and returns a
 -- correlation-id (must be used to tag the request with) along with an STM monad that will
 -- wait for and get the request.
 -- The last value of the tuple allows feeding values directly into the response. A common
 -- use case is to trigger a timeout.
 request :: Circular c => Correlator c i
-    -> ResponseM i a
+    -> Fetch i a
     -> STM (c, STM a, i -> STM ())
 request (Correlator pv idV ipV) handler = do
         Entry ident key chan <- nextId idV >>= addEntry ipV pv
         let future = processResponse handler (readTChan chan) <* removeEntry ipV ident
         let feedFun = writeTChan chan
         return (key, future, feedFun)
+
+processResponse :: Fetch i a -> STM i -> STM a
+processResponse fetch action = actionSource (liftM Just action) $$ liftFetch fetch
 
 
 nextId idV = do
@@ -126,7 +105,7 @@ allocateKey es = case findFree keys of
           key (Entry _ k _) = k
 
 -- | Let the Correlator process an response.
--- It will forward to response to the correct response processor (ResponseM).
+-- It will forward to response to the correct response processor (Sink).
 push :: Eq c => Correlator c i -> c -> i -> STM ()
 push (Correlator _ _ ipV) key value = do
         es <- readTVar ipV
