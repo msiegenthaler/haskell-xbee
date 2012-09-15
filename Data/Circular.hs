@@ -18,6 +18,6 @@ findFree :: Circular c => [c] -> Maybe c
 findFree [] = Just initial
 findFree keys = check keys lst (next lst)
     where lst = last keys
-          check keys k c | k == c        = Nothing
-                         | c `elem` keys = check keys k (next c)
-                         | otherwise     = Just c
+          check ks k c | k == c        = Nothing
+                       | c `elem` keys = check ks k (next c)
+                       | otherwise     = Just c

@@ -23,13 +23,13 @@ startThreadGroup actions = do
         errorBox <- newEmptyTMVarIO
         ts <- mapM (forkIO . wrapExec latch errorBox) actions
         done <- newEmptyMVar
-        forkIO $ do r <- atomically $ watchAndWait latch errorBox
-                    handleResult ts r
-                    putMVar done r
+        _ <- forkIO $ do r <- atomically $ watchAndWait latch errorBox
+                         handleResult ts r
+                         putMVar done r
         return $ ThreadGroup done ts
     where 
         watchAndWait l e = (awaitLatch l >> return Nothing) `orElse` liftM Just (takeTMVar e)
-        handleResult ts (Just e) = mapM_ killThread ts
+        handleResult ts (Just _) = mapM_ killThread ts
         handleResult _  Nothing  = return ()
 
 wrapExec doneLatch errorBox action = handle onError $ action >> onDone
@@ -40,9 +40,9 @@ wrapExec doneLatch errorBox action = handle onError $ action >> onDone
 -- | Wait for all threads of the group to terminate. If a thread threw an exeception then this
 --   exception is rethrown here
 awaitThreadGroup :: ThreadGroup -> IO ()
-awaitThreadGroup (ThreadGroup d _) = readMVar d >>= handle
-    where handle Nothing = return ()
-          handle (Just e) = throwIO e
+awaitThreadGroup (ThreadGroup d _) = readMVar d >>= fun
+    where fun Nothing = return ()
+          fun (Just e) = throwIO e
 
 -- | Kills all threads in the thread group. This will result in awaitThreadGroup to throw 
 --   a thread killed.

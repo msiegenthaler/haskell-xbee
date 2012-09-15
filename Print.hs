@@ -4,9 +4,7 @@ module Print (
 ) where
 
 import Control.Exception
-import Control.Monad
 import Control.Concurrent
-import Control.Concurrent.Chan
 import System.IO
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -21,21 +19,19 @@ printChan = unsafePerformIO $ newChan
 -- | Use to wrap the body of main.
 withSysoutPrint :: IO a -> IO a
 withSysoutPrint cmd = bracket (start >> tick) stop body
-    where start = forkIO $ cleanup printChan >> runPutStr printChan stdout
-          stop x = writeChan printChan End >> tick
+    where start  = forkIO $ cleanup printChan >> runPutStr printChan stdout
+          stop _ = writeChan printChan End >> tick
           body _ = cmd
-          tick = threadDelay 100000
-
-debug s = myThreadId >>= putStrLn . (++ "> " ++ s) . show
+          tick   = threadDelay 100000
 
 cleanup c = writeChan c Start >> readChan c >>= step
     where step Start = return ()
-          step other = readChan c >>= step
+          step _     = readChan c >>= step
 
-runPutStr c h = readChan c >>= handle
-    where handle (PrintLn _ s) = hPutStrLn h s >> runPutStr c h
-          handle End = return ()
-          handle _ = runPutStr c h
+runPutStr c h = readChan c >>= fun
+    where fun (PrintLn _ s) = hPutStrLn h s >> runPutStr c h
+          fun End = return ()
+          fun _ = runPutStr c h
 
 
 printLn s = do t <- myThreadId

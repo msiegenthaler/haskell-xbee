@@ -5,7 +5,6 @@ module Control.Concurrent.Latch (
     awaitLatch,
 ) where
 
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 
@@ -23,6 +22,6 @@ onLatch (CountDownLatch v) = readTVar v >>= next
                  | otherwise = return ()
 
 -- | Wait until the onLatch has been called for the specified times.
-awaitLatch (CountDownLatch v) = readTVar v >>= check
-    where check 0 = return ()
-          check _ = retry
+awaitLatch (CountDownLatch v) = readTVar v >>= ck
+    where ck 0 = return ()
+          ck _ = retry
