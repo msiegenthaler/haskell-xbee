@@ -32,28 +32,25 @@ module System.Hardware.XBee.Device (
     fasterOf,
     fastestOf,
     -- * Reexports
-    liftIO,
-    fetch
+    liftIO
 ) where
 
-import System.Hardware.XBee.Frame
 import System.Hardware.XBee.Command
-import Data.List
 import Data.Word
 import Data.Time.Units
 import qualified Control.Concurrent as C
 import Control.Concurrent.STM
 import Control.Concurrent.Future hiding (await,awaitAny,afterUs)
 import qualified Control.Concurrent.Future as F
-import Control.Exception as E
+import Control.Exception as E (bracket,bracket_)
 import Control.Monad
 import Control.Monad.Trans
-import Control.Monad.Reader (runReaderT)
-import Control.Monad.Reader.Class
-import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Reader
 import Control.Applicative
 import Control.RequestResponseCorrelator
 import Data.SouSiT
+import Data.SouSiT.Sink
+import Data.SouSiT.Source
 import Data.SouSiT.STM
 import qualified Data.SouSiT.Trans as T
 
@@ -74,7 +71,7 @@ data CommandResponse = CRData CommandIn
                      | CRTimeout deriving (Show, Eq)
 
 -- | Handler for the answers to a single command sent to the XBee.
-type CommandHandler a = ResponseM CommandResponse a
+type CommandHandler a = Fetch CommandResponse a
 
 -- | A command that expects an answer from the XBee.
 data FrameCmd a   = FrameCmd (FrameId -> CommandOut) (CommandHandler a)
@@ -102,12 +99,12 @@ data XBee = XBee { scheduleQueue :: TChan Scheduled,
 --   actual device. See i.e. the HandleDeviceConnector module.
 data XBeeInterface = XBeeInterface {
                     -- | Commands that are sent to the xbee device (serial port).
-                    outgoing   :: BasicSource2 IO CommandOut,
+                    outgoing   :: FeedSource IO CommandOut,
                     -- | Commands received from the xbee device (serial port).
                     incoming   :: Sink CommandIn IO (),
                     -- | Actions to be scheduled with the specified delay.
                     --   This is used mainly for timeouts.
-                    toSchedule :: BasicSource2 IO Scheduled }
+                    toSchedule :: FeedSource IO Scheduled }
 
 -- | Connects an XBee device to a "backend", i.e. a serial port.
 data XBeeConnector a = XBeeConnector {
@@ -158,9 +155,7 @@ processIn corr subs msg = handle (frameIdFor msg) >> writeTChan subs msg
 
 -- | Forks a new thread that executes XBeeCmd
 fork :: XBeeCmd a -> XBeeCmd C.ThreadId
-fork cmd = ask >>= exec (void cmd)
-    where exec cmd x = liftIO $ C.forkIO $ execute x cmd
-
+fork cmd = ask >>= liftIO . C.forkIO . flip execute (void cmd)
 
 -- IO lifted functions from Future
 await = liftIO' . F.await
@@ -172,9 +167,7 @@ liftIO' = liftIO
 -- | Sends a command without waiting for a response.
 -- Use noFrameId if the command supports frames.
 fire :: CommandOut -> XBeeCmd ()
-fire cmd = liftM outQueue ask >>= enqueue cmd
-    where enqueue cmd q = liftIO $ atomically $ writeTChan q cmd
-
+fire cmd = liftM outQueue ask >>= liftIO . atomically . flip writeTChan cmd
 
 -- | Sends a command.
 send :: TimeUnit time => time -> FrameCmd a -> XBeeCmdAsync a
@@ -203,12 +196,13 @@ data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by a CommandHandler from send.
-rawInSource :: BasicSource2 XBeeCmd CommandIn
-rawInSource = BasicSource2 first
-    where first s = liftM inQueue ask >>= liftIO . atomically . dupTChan >>= flip step s
-          step :: TChan a -> Sink a XBeeCmd r -> XBeeCmd (Sink a XBeeCmd r)
-          step q (SinkCont next _) = dequeue q >>= next >>= step q
-          step q done = return done
+rawInSource :: FeedSource XBeeCmd CommandIn
+rawInSource = FeedSource fun
+    where fun sink = open >>= trans sink
+          open = liftM inQueue ask >>= liftIO . atomically . dupTChan
+          trans sink chan = sinkStatus sink >>= handle
+            where handle (Done _)    = return sink
+                  handle (Cont nf _) = liftM nf (dequeue chan)
 
 dequeue :: TChan a -> XBeeCmd a
 dequeue = liftIO . atomically . readTChan
@@ -221,11 +215,11 @@ commandInToReceivedMessage = T.filterMap step
           step _ = Nothing
 
 -- | Source for all messages received from remote XBees (Receive16 and Receive64).
-messagesSource :: BasicSource XBeeCmd ReceivedMessage
+messagesSource :: SimpleSource XBeeCmd ReceivedMessage
 messagesSource = rawInSource $= commandInToReceivedMessage
 
 -- | Source for modem status updates.
-modemStatusSource ::  BasicSource XBeeCmd ModemStatus
+modemStatusSource ::  SimpleSource XBeeCmd ModemStatus
 modemStatusSource = rawInSource $= commandInToModemStatus
 
 commandInToModemStatus :: Transform CommandIn ModemStatus
