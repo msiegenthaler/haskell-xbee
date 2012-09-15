@@ -38,7 +38,7 @@ stmFuture = Future
 --   available as a future.
 forkFuture :: IO a -> IO (Future a)
 forkFuture a = do v <- newEmptyTMVarIO
-                  forkIO $ a >>= atomically . putTMVar v
+                  _ <- forkIO $ a >>= atomically . putTMVar v
                   return $ stmFuture $ takeTMVar v
 
 
