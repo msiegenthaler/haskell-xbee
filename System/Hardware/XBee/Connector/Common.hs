@@ -13,12 +13,15 @@ module System.Hardware.XBee.Connector.Common (
 ) where
 
 import Data.SouSiT
+import Data.SouSiT.Sink
+import Data.SouSiT.Transform
 import qualified Data.SouSiT.Trans as T
 import qualified Data.ByteString as BS
+import Data.Word
 import Data.Serialize
+import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.ThreadGroup
-import Control.Monad
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.Frame
@@ -28,10 +31,8 @@ import System.Hardware.XBee.Frame
 -- | Sink that schedules the received. The sink is never done.
 --   Pending timeouts are processed even after the sink is closed.
 timeoutSink :: Sink Scheduled IO ()
-timeoutSink = SinkCont next done
-    where next i = (forkIO . schedule) i >> return (SinkCont next done)
-          done = return ()
-          schedule (Scheduled time action) = threadDelay time >> action
+timeoutSink = actionSink $ void . forkIO . schedule
+    where schedule (Scheduled time action) = threadDelay time >> action
 
 
 type ThreadedConnector = XBeeConnector ThreadGroup
@@ -47,24 +48,25 @@ sousiConnector c = XBeeConnector o close
           close = killThreadGroup
 
 -- | Parses CommandIn from ByteStrings.
+byteStringToCmdIn :: Transform BS.ByteString CommandIn
 byteStringToCmdIn = T.map BS.unpack =$= T.disperse =$= bytesToCmdIn
 
 -- | Parses CommandIn from bytes.
+bytesToCmdIn :: Transform Word8 CommandIn
 bytesToCmdIn = word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
 
 -- | Serializes CommandOut into ByteString.
-cmdOutToByteString = T.map commandToFrame =$= T.map (runPut . put)
+cmdOutToByteString :: Transform CommandOut BS.ByteString
+cmdOutToByteString = T.map commandToFrame =$= T.map encode
 
 -- | Serializes CommandOut into bytes.
+cmdOutToBytes :: Transform CommandOut Word8
 cmdOutToBytes = cmdOutToByteString =$= T.map BS.unpack =$= T.disperse
 
 
 -- | Decorates a source/sink pair to also output everything received/sent to sysout.
 --   The output is prefixed with either '>' or '<'
-debugToSysout (src,sink) = (debugSource src, debugSink sink)
-
-debugSource :: (Source src, Show a) => src IO a -> BasicSource IO a
-debugSource = decorateSource (putStrLn . ("< "++) . show)
-
-debugSink :: Show a => Sink a IO r -> Sink a IO r
-debugSink   = decorateSink (putStrLn . ("> "++) . show)
+debugToSysout :: (Show a, Show b, Source src) =>
+        (src IO a, Sink b IO r) ->
+        (SimpleSource IO a, Sink b IO r)
+debugToSysout (src,sink) = (transformSource (T.debug "<") src, T.debug ">" =$ sink)
