@@ -17,7 +17,6 @@ import Data.Word
 import qualified Data.ByteString as BS
 import Data.Serialize
 import Control.Monad
-import Control.Category ((>>>))
 import Data.SouSiT
 import qualified Data.SouSiT.Trans as T
 
@@ -63,26 +62,11 @@ instance Serialize Frame where
         putByteString $ BS.pack d
         putWord8 $ checksum d
 
-serializeWord8 :: Frame -> [Word8]
-serializeWord8 = BS.unpack . runPut . put
-
-deserializeWord8 :: [Word8] -> Either String Frame
-deserializeWord8 = runGet get . BS.pack 
 
 -- | Serializes the frames into bytes.
 frameToWord8 :: Transform Frame Word8
-frameToWord8 = T.map serializeWord8 >>> T.disperse
+frameToWord8 = T.serialize . T.map BS.unpack . T.disperse
 
 -- | Reads frames from bytes. Invalid frames (wrong checksum/invalid length) are silently discarded.
 word8ToFrame :: Transform Word8 Frame
-word8ToFrame = ContTransform (step []) []
-    where parse = runGetPartial (get::Get Frame)
-          step fs i
-                | i == startDelimiter = step' (parse:fs) [] i
-                | otherwise           = step' fs         [] i
-          step' [] []  _ = ([], word8ToFrame)
-          step' [] fs' _ = ([], ContTransform (step fs') [])
-          step' (f:fs) fs' i = case f (BS.singleton i) of
-                    (Done r _)   -> ([r], word8ToFrame)
-                    (Partial f') -> step' fs (fs' ++ [f']) i
-                    (Fail _)     -> step' fs fs' i
+word8ToFrame = T.map (BS.singleton) . T.deserialize
