@@ -46,8 +46,12 @@ Cabal-version:       >= 1.9.2
 Library
   -- Modules exported by the library.
   Exposed-modules: System.Hardware.XBee.Command, System.Hardware.XBee.Frame,
-                   System.Hardware.XBee.Device
-  
+                   System.Hardware.XBee.Device,
+                   Control.RequestResponseCorrelator,
+                   Control.Concurrent.Future, Control.Concurrent.Latch,
+                   Control.Concurrent.ThreadGroup,
+                   Data.Circular
+
   -- Packages needed in order to build this package.
   Build-depends: base > 4, sousit >= 0.3, serialIO, cereal, bytestring, time-units, stm, mtl,
                  utf8-string, transformers
@@ -55,7 +59,8 @@ Library
 
 Test-Suite command-test
   Type: exitcode-stdio-1.0
-  Hs-source-dirs: test
-  Main-Is: CommandTest.hs
-  Build-Depends: base > 4, mtl, xbee, cereal, bytestring,
+  Main-Is: test/CommandTest.hs
+  other-modules: Test.XBeeTestSupport
+  XBeeTestSupport.hs
+  Build-Depends: base > 4, mtl, xbee, cereal, bytestring, sousit >= 0.3,
                  QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9
