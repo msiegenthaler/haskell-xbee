@@ -3,22 +3,17 @@ module Main (
 ) where
 
 import Data.Word
-import qualified Data.ByteString as BS
-import Data.Serialize
 import Data.Time.Units
 import Data.SouSiT
-import Data.SouSiT.Trans as T
+import Data.SouSiT.Sink
+import qualified Data.SouSiT.Trans as T
 import qualified Codec.Binary.UTF8.String as S
-import System.IO
 import System.Hardware.Serial
 import System.Hardware.XBee.Command
 import System.Hardware.XBee.Device
 import System.Hardware.XBee.DeviceCommand
-import System.Hardware.XBee.Connector.Common
 import System.Hardware.XBee.Connector.Handle
-import Control.Monad
-import Control.Concurrent (threadDelay,forkIO)
-import Control.Concurrent.STM
+import Control.Monad.IO.Class as I
 import Control.Concurrent.ThreadGroup
 import Print
 
@@ -35,9 +30,9 @@ main = withSysoutPrint $ startThreadGroup [
             ] >>= awaitThreadGroup >> printLn "Done."
           
 
-initXBee n = do a <- setAT address16 disabledAddress
-                n <- setAT nodeIdentifier n
-                await (a >> n)
+initXBee n = do a  <- setAT address16 disabledAddress
+                ni <- setAT nodeIdentifier n
+                await (a >> ni)
 
 sayHi = do a <- address64 >>= await
            i <- getAT nodeIdentifier >>= await
@@ -76,38 +71,33 @@ sayBye = broadcast endSignal
 
 receiveMsgs = output "Waiting for messages.." >> outputMsgs
 
-outputMsgs = messagesSource $$ T.map format =$ liftIOSink outSink
+outputMsgs = messagesSource $$ T.map format =$ outSink
     where format msg = "Got '" ++ S.decode (messageBody msg) ++ "' from " ++ showSender (sender msg)
           showSender (XBeeAddress16 a) = show a
           showSender (XBeeAddress64 a) = show a
 
 
-outputRaws = rawInSource $$ T.map show =$ liftIOSink outSink
+outputRaws = rawInSource $$ T.map show =$ outSink
 
 
 endSignal = [0]
 
-echoMsgs = messagesSource $$ decorated (replySink (fun . messageBody))
+echoMsgs = messagesSource $$ T.mapM deco =$ replySink (fun . messageBody)
     where fun body | body == endSignal = Nothing
                    | otherwise         = Just $ S.encode "You said " ++ body
-          decorated = decorateSink (output . ("> echoing to: " ++) . S.decode . messageBody)
+          deco i = (output . ("> echoing to: " ++) . S.decode . messageBody) i >> return i
+
 
 replySink :: (ReceivedMessage -> Maybe [Word8]) -> Sink ReceivedMessage XBeeCmd ()
-replySink f = SinkCont next (return ())
-    where next msg = case f msg of
-                        (Just a) -> transmit (sender msg) a >>= await >> return (replySink f)
-                        Nothing  -> return $ SinkDone (return ())
+replySink f = do msg <- input
+                 let r = f msg
+                 case r of
+                    Nothing  -> replySink f
+                    (Just a) -> return (transmit (sender msg) a >>= await) >> replySink f
 
 
-liftIOSink :: Sink a IO r -> Sink a XBeeCmd r
-liftIOSink (SinkCont n d) = SinkCont n' (liftIO d)
-    where n' a = liftIO (liftM liftIOSink (n a))
-liftIOSink (SinkDone d) = SinkDone $ liftIO d
-
-
-outSink :: Sink String IO ()
-outSink = SinkCont o (return ())
-    where o s = printLn s >> return outSink
+outSink :: MonadIO m => Sink String m ()
+outSink = actionSink (I.liftIO . printLn)
 
 
 output = liftIO . printLn
