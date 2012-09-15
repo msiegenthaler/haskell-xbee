@@ -36,7 +36,6 @@ import Data.Bits
 import Data.Circular
 import Data.Serialize
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BS8
 import Control.Monad
 import Control.Applicative
 import System.Hardware.XBee.Frame
