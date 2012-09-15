@@ -29,6 +29,7 @@ import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Serialize
 import Data.Time.Units
+import Data.SouSiT
 import qualified Codec.Binary.UTF8.String as S
 import Control.Monad
 import Control.Applicative
@@ -53,7 +54,7 @@ transmitCmd (XBeeAddress16 a) noack bdcst d f = Transmit16 f a noack bdcst (take
 
 -- | Sends up to 100 bytes to another XBee and requests an ack.
 transmit :: XBeeAddress -> [Word8] -> XBeeCmdAsync TransmitStatus
-transmit to d = sendRemote cmd (liftM handle fetch)
+transmit to d = sendRemote cmd (liftM handle input)
     where handle (CRData (TransmitResponse _ r)) = r
           handle _ = TransmitNoAck
           cmd = transmitCmd to False False d
@@ -74,7 +75,7 @@ failOnLeft (Right v)  = return v
 
 
 atCommand :: (Serialize i, Serialize o) => Char -> Char -> i -> XBeeCmdAsync o
-atCommand c1 c2 i = sendLocal cmd (liftM handle fetch >>= failOnLeft)
+atCommand c1 c2 i = sendLocal cmd (liftM handle input >>= failOnLeft)
     where cmd f = ATCommand f (commandName c1 c2) (ser i)
           handle (CRData (ATCommandResponse _ _ CmdOK d)) = parse d
           handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
@@ -172,25 +173,23 @@ discover tmo = setAT discoverTimeout (convertUnit tmo) >>= await >>
     where tmo' = convertUnit tmo + localTimeout
 
 discover' :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
-discover' tmout = send tmout $ FrameCmd cmd (fetch >>= handle [])
+discover' tmout = send tmout $ FrameCmd cmd (input >>= handle [])
     where cmd f = ATCommand f (commandName 'N' 'D') []
           handle :: [NodeInformation] -> CommandResponse -> CommandHandler [NodeInformation]
           handle soFar (CRData (ATCommandResponse _ _ CmdOK [])) = return soFar
           handle soFar (CRData (ATCommandResponse _ _ CmdOK d)) = do ni <- parse d
-                                                                     fetch >>= handle (ni:soFar)
-          handle soFar (CRData (ATCommandResponse _ _ status _)) = fail $ "Failed: " ++ show status
+                                                                     input >>= handle (ni:soFar)
+          handle _     (CRData (ATCommandResponse _ _ status _)) = fail $ "Failed: " ++ show status
           handle _ _ = fail "Timeout"
           parse = failOnLeft . runGet get . BS.pack
 
 -- | Set/Get the node discover timeout (only used internally).
 discoverTimeout :: ATSetting Millisecond
 discoverTimeout = mapAtSetting (atSetting 'N' 'T') convertToMs (max 1 . min 252 . convertFromMs)
-    where nt :: ATSetting Word8
-          nt = atSetting 'N' 'T'
-          convertToMs :: Word8 -> Millisecond
+    where convertToMs :: Word8 -> Millisecond
           convertToMs b = fromIntegral (b * 100)
           convertFromMs :: Millisecond -> Word8
-          convertFromMs v = round $ fromIntegral (toMicroseconds v) / 100000
+          convertFromMs v = round $ (fromIntegral (toMicroseconds v) / 100000 :: Double)
 
 -- | Controls if a node discover dows return the sender as well (only used internally).
 discoverSelfResponse :: ATSetting Bool
