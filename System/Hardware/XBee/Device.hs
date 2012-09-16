@@ -202,7 +202,7 @@ rawInSource = FeedSource fun
           open = liftM inQueue ask >>= liftIO . atomically . dupTChan
           trans sink chan = sinkStatus sink >>= handle
             where handle (Done _)    = return sink
-                  handle (Cont nf _) = liftM nf (dequeue chan)
+                  handle (Cont nf _) = dequeue chan >>= nf
 
 dequeue :: TChan a -> XBeeCmd a
 dequeue = liftIO . atomically . readTChan

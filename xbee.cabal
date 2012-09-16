@@ -22,7 +22,7 @@ library
                      Control.Concurrent.Future, Control.Concurrent.Latch,
                      Control.Concurrent.ThreadGroup,
                      Data.Circular
-  build-depends:     base > 4, sousit >= 0.3, serialIO, cereal, bytestring, time-units, stm, mtl,
+  build-depends:     base > 4, sousit >= 0.4, serialIO, cereal, bytestring, time-units, stm, mtl,
                      utf8-string, transformers
   
 
@@ -30,5 +30,5 @@ test-suite   command-test
   type:              exitcode-stdio-1.0
   main-Is:           test/CommandTest.hs
   other-modules:     Test.XBeeTestSupport
-  build-depends:     base > 4, mtl, xbee, cereal, bytestring, sousit >= 0.3,
+  build-depends:     base > 4, mtl, xbee, cereal, bytestring, sousit >= 0.4,
                      QuickCheck > 2, test-framework >= 0.3.3, test-framework-quickcheck2 >= 0.2.9
