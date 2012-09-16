@@ -8,9 +8,10 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.XBeeTestSupport
 
 import Data.Word
+import Data.ByteString (ByteString,pack,unpack)
+import qualified Data.ByteString as BS
 import Data.Serialize
 import System.Hardware.XBee.Command
-import qualified Data.ByteString as BS
 import Control.Monad
 
 
@@ -103,7 +104,7 @@ modemStatusUpdateParseExample = parse [0x8A, 0x01] == Right (ModemStatusUpdate W
 atCommandResponseSerializeParse f cmd st val = serParseTest (ATCommandResponse f cmd st val)
 
 atCommandResponseExample = parse [0x88, 0x52, 0x4D, 0x59, 0x00, 0x23, 0x12] ==
-        Right (ATCommandResponse (frameForId 0x52) (commandName 'M' 'Y') CmdOK [0x23, 0x12])
+        Right (ATCommandResponse (frameForId 0x52) (commandName 'M' 'Y') CmdOK $ pack [0x23, 0x12])
 
 remoteAtCommandResponseSerializeParse f a64 a16 cmd st val = serParseTest $
     RemoteATCommandResponse f a64 a16 cmd st val
@@ -112,7 +113,7 @@ remoteAtCommandResponseExample = parse [0x97, 0x52,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
             0xFF, 0xFE,
             0x4D, 0x59, 0x00, 0x23, 0x12] ==
-        Right (RemoteATCommandResponse (frameForId 0x52) broadcastAddress disabledAddress (commandName 'M' 'Y') CmdOK [0x23, 0x12])
+        Right (RemoteATCommandResponse (frameForId 0x52) broadcastAddress disabledAddress (commandName 'M' 'Y') CmdOK $ pack [0x23, 0x12])
 
 transmitResponseSerializeParse f s = serParseTest (TransmitResponse f s)
 
@@ -121,32 +122,34 @@ transmitResponseExample = parse [0x89, 0x10, 0x00] ==
 
 receive64SerializeParse from ss ack bc d = serParseTest $ Receive64 from ss ack bc d
 
-receive64Example :: [Word8] -> Bool
+receive64Example :: ByteString -> Bool
 receive64Example d = parse ([0x80,
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x28, 0x00] ++ d) ==
+            0x28, 0x00] ++ unpack d) ==
         Right (Receive64 (Address64 0x0102030405060708) (fromDbm (-40)) False False d)
 
 receive16SerializeParse from ss ack bc d = serParseTest $ Receive16 from ss ack bc d
 
-receive16Example :: [Word8] -> Bool
+receive16Example :: ByteString -> Bool
 receive16Example d = parse ([0x81,
             0x01, 0x02,
-            0x28, 0x00] ++ d) ==
+            0x28, 0x00] ++ unpack d) ==
         Right (Receive16 (Address16 0x0102) (fromDbm (-40)) False False d)
 
 
 -- Command Out
 
+someData = pack [5..8]
+
 atCommandSerializeParse f cmd d = serParseTest (ATCommand f cmd d)
 
 atCommandExample = parse [0x08, 0x01, 0x44, 0x4C, 0x05, 0x06, 0x07, 0x08] ==
-        Right (ATCommand (frameForId 1) (commandName 'D' 'L') [5, 6, 7, 8])
+        Right (ATCommand (frameForId 1) (commandName 'D' 'L') someData)
 
 atQueueCommandSerializeParse f cmd d = serParseTest (ATQueueCommand f cmd d)
 
 atQueueCommandExample = parse [0x09, 0x01, 0x44, 0x4C, 0x05, 0x06, 0x07, 0x08] ==
-        Right (ATQueueCommand (frameForId 1) (commandName 'D' 'L') [5, 6, 7, 8])
+        Right (ATQueueCommand (frameForId 1) (commandName 'D' 'L') someData)
 
 remoteAtCommand64SerializeParse f adr b cmd d = serParseTest (RemoteATCommand64 f adr b cmd d)
 
@@ -156,7 +159,7 @@ remoteAtCommand64Example = parse [0x17, 0x01,
             0x02,
             0x44, 0x4C,
             0x05, 0x06, 0x07, 0x08] ==
-        Right (RemoteATCommand64 (frameForId 1) (Address64 0x0102030405060708) True (commandName 'D' 'L') [5, 6, 7, 8])
+        Right (RemoteATCommand64 (frameForId 1) (Address64 0x0102030405060708) True (commandName 'D' 'L') someData)
 
 remoteAtCommand16SerializeParse f adr b cmd d = serParseTest (RemoteATCommand16 f adr b cmd d)
 
@@ -166,7 +169,7 @@ remoteAtCommand16Example = parse [0x17, 0x01,
             0x02,
             0x44, 0x4C,
             0x05, 0x06, 0x07, 0x08] ==
-        Right (RemoteATCommand16 (frameForId 1) (Address16 0x0102) True (commandName 'D' 'L') [5, 6, 7, 8])
+        Right (RemoteATCommand16 (frameForId 1) (Address16 0x0102) True (commandName 'D' 'L') someData)
 
 transmit64SerializeParse f adr da bc d = serParseTest (Transmit64 f adr da bc d)
 
@@ -174,7 +177,7 @@ transmit64Example = parse [0x00, 0x02,
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
             0x00,
             0x09, 0x08, 0x07] ==
-        Right (Transmit64 (frameForId 2) (Address64 0x0102030405060708) False False [0x09, 0x08, 0x07])
+        Right (Transmit64 (frameForId 2) (Address64 0x0102030405060708) False False $ pack [0x09, 0x08, 0x07])
 
 transmit16SerializeParse f adr da bc d = serParseTest (Transmit16 f adr da bc d)
 
@@ -182,7 +185,7 @@ transmit16Example = parse [0x01, 0x03,
             0x01, 0x02,
             0x00,
             0x09, 0x08, 0x07] ==
-        Right (Transmit16 (frameForId 3) (Address16 0x0102) False False [0x09, 0x08, 0x07])
+        Right (Transmit16 (frameForId 3) (Address16 0x0102) False False $ pack [0x09, 0x08, 0x07])
 
 --Main
 main = defaultMain tests

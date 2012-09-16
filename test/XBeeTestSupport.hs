@@ -6,6 +6,8 @@ module Test.XBeeTestSupport (
 
 import Test.QuickCheck
 import Data.Word
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Control.Monad
 import System.Hardware.XBee.Command
 
@@ -50,3 +52,5 @@ instance Arbitrary TransmitStatus where
 instance Arbitrary SignalStrength where
     arbitrary = liftM fromDbm (choose (-255, 0))
 
+instance Arbitrary ByteString where
+    arbitrary = liftM BS.pack arbitrary
