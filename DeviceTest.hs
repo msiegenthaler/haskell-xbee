@@ -2,6 +2,7 @@ module Main (
     main
 ) where
 
+import Data.Maybe
 import Data.Word
 import Data.Time.Units
 import Data.SouSiT
@@ -90,11 +91,10 @@ echoMsgs = messagesSource $$ T.mapM deco =$ replySink (fun . messageBody)
 
 replySink :: (ReceivedMessage -> Maybe [Word8]) -> Sink ReceivedMessage XBeeCmd ()
 replySink f = do msg <- inputMaybe
-                 let r = msg >>= f
-                 maybe (return ()) ((>> replySink f) . return . rpl msg) r
-    where rpl (Just msg) answer = transmit (sender msg) answer >>= await >> return ()
-          rpl _ _ = return ()
-
+                 fromMaybe (return ()) $ do
+                    m <- msg
+                    a <- f m
+                    return $ (return $ transmit (sender m) a >>= await) >> replySink f
 
 outSink :: MonadIO m => Sink String m ()
 outSink = actionSink (I.liftIO . printLn)
