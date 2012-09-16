@@ -89,11 +89,11 @@ echoMsgs = messagesSource $$ T.mapM deco =$ replySink (fun . messageBody)
 
 
 replySink :: (ReceivedMessage -> Maybe [Word8]) -> Sink ReceivedMessage XBeeCmd ()
-replySink f = do msg <- input
-                 let r = f msg
-                 case r of
-                    Nothing  -> replySink f
-                    (Just a) -> return (transmit (sender msg) a >>= await) >> replySink f
+replySink f = do msg <- inputMaybe
+                 let r = msg >>= f
+                 maybe (return ()) ((>> replySink f) . return . rpl msg) r
+    where rpl (Just msg) answer = transmit (sender msg) answer >>= await >> return ()
+          rpl _ _ = return ()
 
 
 outSink :: MonadIO m => Sink String m ()
