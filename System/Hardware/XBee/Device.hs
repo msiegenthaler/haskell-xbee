@@ -36,7 +36,7 @@ module System.Hardware.XBee.Device (
 ) where
 
 import System.Hardware.XBee.Command
-import Data.Word
+import Data.ByteString (ByteString)
 import Data.Time.Units
 import qualified Control.Concurrent as C
 import Control.Concurrent.STM
@@ -192,7 +192,7 @@ data ReceivedMessage = ReceivedMessage { sender :: XBeeAddress,
                                          signal :: SignalStrength,
                                          addressBroadcast :: Bool,
                                          panBroadcast :: Bool,
-                                         messageBody :: [Word8] } deriving (Show,Eq)
+                                         messageBody :: ByteString } deriving (Show,Eq)
 
 -- | Source for all incoming commands from the XBee. This includes replies to framed command
 -- that are also handled by a CommandHandler from send.

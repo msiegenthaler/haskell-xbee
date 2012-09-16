@@ -16,6 +16,7 @@ import Data.SouSiT
 import Data.SouSiT.Sink
 import Data.SouSiT.Transform
 import qualified Data.SouSiT.Trans as T
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word
 import Data.Serialize
@@ -48,15 +49,15 @@ sousiConnector c = XBeeConnector o close
           close = killThreadGroup
 
 -- | Parses CommandIn from ByteStrings.
-byteStringToCmdIn :: Transform BS.ByteString CommandIn
-byteStringToCmdIn = T.map BS.unpack =$= T.disperse =$= bytesToCmdIn
+byteStringToCmdIn :: Transform ByteString CommandIn
+byteStringToCmdIn = decodeFrame =$= T.map frameToCommand =$= T.eitherRight
 
 -- | Parses CommandIn from bytes.
 bytesToCmdIn :: Transform Word8 CommandIn
-bytesToCmdIn = word8ToFrame =$= T.map frameToCommand =$= T.eitherRight
+bytesToCmdIn = T.map BS.singleton . byteStringToCmdIn
 
 -- | Serializes CommandOut into ByteString.
-cmdOutToByteString :: Transform CommandOut BS.ByteString
+cmdOutToByteString :: Transform CommandOut ByteString
 cmdOutToByteString = T.map commandToFrame =$= T.map encode
 
 -- | Serializes CommandOut into bytes.

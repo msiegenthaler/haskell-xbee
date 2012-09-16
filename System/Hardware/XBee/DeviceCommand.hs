@@ -26,6 +26,7 @@ module System.Hardware.XBee.DeviceCommand (
 
 import Data.Word
 import Data.Bits
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Serialize
 import Data.Time.Units
@@ -49,11 +50,11 @@ sendRemote cmd handler = send remoteTimeout (FrameCmd cmd handler)
 -- | Maximum number of bytes that can be transmitted with a single transmit call.
 transmitBytes = 100
 
-transmitCmd (XBeeAddress64 a) noack bdcst d f = Transmit64 f a noack bdcst (take transmitBytes d)
-transmitCmd (XBeeAddress16 a) noack bdcst d f = Transmit16 f a noack bdcst (take transmitBytes d)
+transmitCmd (XBeeAddress64 a) noack bdcst d f = Transmit64 f a noack bdcst (BS.take transmitBytes d)
+transmitCmd (XBeeAddress16 a) noack bdcst d f = Transmit16 f a noack bdcst (BS.take transmitBytes d)
 
 -- | Sends up to 100 bytes to another XBee and requests an ack.
-transmit :: XBeeAddress -> [Word8] -> XBeeCmdAsync TransmitStatus
+transmit :: XBeeAddress -> ByteString -> XBeeCmdAsync TransmitStatus
 transmit to d = sendRemote cmd (liftM handle input)
     where handle (CRData (TransmitResponse _ r)) = r
           handle _ = TransmitNoAck
@@ -61,11 +62,11 @@ transmit to d = sendRemote cmd (liftM handle input)
 
 -- | Sends up to 100 bytes to another XBee without requesting an acknowledgement. There
 --   is no way to tell whether the transmission succeeded or not.
-transmitNoAck :: XBeeAddress -> [Word8] -> XBeeCmd ()
+transmitNoAck :: XBeeAddress -> ByteString -> XBeeCmd ()
 transmitNoAck to d = fire $ transmitCmd to True False d noFrameId
 
 -- | Broadcasts up to 100 bytes to all XBees within the same network.
-broadcast :: [Word8] -> XBeeCmd ()
+broadcast :: ByteString -> XBeeCmd ()
 broadcast d = fire $ transmitCmd (XBeeAddress64 broadcastAddress) True True d noFrameId
 
 
@@ -76,12 +77,10 @@ failOnLeft (Right v)  = return v
 
 atCommand :: (Serialize i, Serialize o) => Char -> Char -> i -> XBeeCmdAsync o
 atCommand c1 c2 i = sendLocal cmd (liftM handle input >>= failOnLeft)
-    where cmd f = ATCommand f (commandName c1 c2) (ser i)
-          handle (CRData (ATCommandResponse _ _ CmdOK d)) = parse d
+    where cmd f = ATCommand f (commandName c1 c2) (encode i)
+          handle (CRData (ATCommandResponse _ _ CmdOK d)) = decode d
           handle (CRData (ATCommandResponse _ _ status _)) = Left $ "Failed: " ++ show status
           handle _ = Left "Timeout"
-          ser = BS.unpack . runPut . put
-          parse = runGet get . BS.pack
 
 data ATSetting a = ATSetting { getAT :: XBeeCmdAsync a,
                                setAT :: a -> XBeeCmdAsync () }
@@ -174,14 +173,14 @@ discover tmo = setAT discoverTimeout (convertUnit tmo) >>= await >>
 
 discover' :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
 discover' tmout = send tmout $ FrameCmd cmd (input >>= handle [])
-    where cmd f = ATCommand f (commandName 'N' 'D') []
+    where cmd f = ATCommand f (commandName 'N' 'D') BS.empty
           handle :: [NodeInformation] -> CommandResponse -> CommandHandler [NodeInformation]
-          handle soFar (CRData (ATCommandResponse _ _ CmdOK [])) = return soFar
-          handle soFar (CRData (ATCommandResponse _ _ CmdOK d)) = do ni <- parse d
-                                                                     input >>= handle (ni:soFar)
+          handle soFar (CRData (ATCommandResponse _ _ CmdOK d))
+                | BS.null d = return soFar
+                | otherwise = do ni <- failOnLeft $ decode d
+                                 input >>= handle (ni:soFar)
           handle _     (CRData (ATCommandResponse _ _ status _)) = fail $ "Failed: " ++ show status
           handle _ _ = fail "Timeout"
-          parse = failOnLeft . runGet get . BS.pack
 
 -- | Set/Get the node discover timeout (only used internally).
 discoverTimeout :: ATSetting Millisecond

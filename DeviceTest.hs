@@ -4,6 +4,8 @@ module Main (
 
 import Data.Maybe
 import Data.Word
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.Time.Units
 import Data.SouSiT
 import Data.SouSiT.Sink
@@ -59,21 +61,23 @@ showPeers = do
                 show (nodeSignalStrength n)
 
 sayHiToAll = do
-        broadcast $ S.encode "Hi everybody"
+        broadcast $ utfToBs "Hi everybody"
         nodes <- discover (300 :: Millisecond) >>= await
         output $ "Saying hi to all " ++ show (length nodes) ++ " peers"
         c <- mapM sendHi nodes
         mapM_ await c
-    where sendHi n = transmit to $ S.encode $ "Hi, you're " ++ show (nodeAddress64 n)
+    where sendHi n = transmit to $ utfToBs $ "Hi, you're " ++ show (nodeAddress64 n)
             where to = XBeeAddress64 $ nodeAddress64 n
 
+utfToBs = BS.pack . S.encode
+bsToUtf = S.decode . BS.unpack
 
 sayBye = broadcast endSignal
 
 receiveMsgs = output "Waiting for messages.." >> outputMsgs
 
 outputMsgs = messagesSource $$ T.map format =$ outSink
-    where format msg = "Got '" ++ S.decode (messageBody msg) ++ "' from " ++ showSender (sender msg)
+    where format msg = "Got '" ++ bsToUtf (messageBody msg) ++ "' from " ++ showSender (sender msg)
           showSender (XBeeAddress16 a) = show a
           showSender (XBeeAddress64 a) = show a
 
@@ -81,15 +85,15 @@ outputMsgs = messagesSource $$ T.map format =$ outSink
 outputRaws = rawInSource $$ T.map show =$ outSink
 
 
-endSignal = [0]
+endSignal = BS.pack [0]
 
 echoMsgs = messagesSource $$ T.mapM deco =$ replySink (fun . messageBody)
     where fun body | body == endSignal = Nothing
-                   | otherwise         = Just $ S.encode "You said " ++ body
-          deco i = (output . ("> echoing to: " ++) . S.decode . messageBody) i >> return i
+                   | otherwise         = Just $ utfToBs ("You said " ++ bsToUtf body)
+          deco i = (output . ("> echoing to: " ++) . bsToUtf . messageBody) i >> return i
 
 
-replySink :: (ReceivedMessage -> Maybe [Word8]) -> Sink ReceivedMessage XBeeCmd ()
+replySink :: (ReceivedMessage -> Maybe ByteString) -> Sink ReceivedMessage XBeeCmd ()
 replySink f = do msg <- inputMaybe
                  fromMaybe (return ()) $ do
                     m <- msg

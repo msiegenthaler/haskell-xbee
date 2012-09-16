@@ -35,7 +35,7 @@ import Data.Word
 import Data.Bits
 import Data.Circular
 import Data.Serialize
-import qualified Data.ByteString as BS
+import Data.ByteString (ByteString)
 import Control.Monad
 import Control.Applicative
 import System.Hardware.XBee.Frame
@@ -146,19 +146,19 @@ type ApplyChanges = Bool
 {-# ANN module "HLint: ignore Use record patterns" #-}
 -- | Commands or responses sent from the XBee to the computer.
 data CommandIn =  ModemStatusUpdate ModemStatus
-                | ATCommandResponse FrameId CommandName CommandStatus [Word8]
-                | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus [Word8]
+                | ATCommandResponse FrameId CommandName CommandStatus ByteString
+                | RemoteATCommandResponse FrameId Address64 Address16 CommandName CommandStatus ByteString
                 | TransmitResponse FrameId TransmitStatus
-                | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast [Word8]
-                | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast [Word8]
+                | Receive64 Address64 SignalStrength AddressBroadcast PanBroadcast ByteString
+                | Receive16 Address16 SignalStrength AddressBroadcast PanBroadcast ByteString
                   deriving (Show, Eq)
 -- | Commands sent from to computer to the XBee.
-data CommandOut = ATCommand FrameId CommandName [Word8]
-                | ATQueueCommand FrameId CommandName [Word8]
-                | RemoteATCommand64 FrameId Address64 ApplyChanges CommandName [Word8]
-                | RemoteATCommand16 FrameId Address16 ApplyChanges CommandName [Word8]
-                | Transmit64 FrameId Address64 DisableAck BroadcastPan [Word8]
-                | Transmit16 FrameId Address16 DisableAck BroadcastPan [Word8]
+data CommandOut = ATCommand FrameId CommandName ByteString
+                | ATQueueCommand FrameId CommandName ByteString
+                | RemoteATCommand64 FrameId Address64 ApplyChanges CommandName ByteString
+                | RemoteATCommand16 FrameId Address16 ApplyChanges CommandName ByteString
+                | Transmit64 FrameId Address64 DisableAck BroadcastPan ByteString
+                | Transmit16 FrameId Address16 DisableAck BroadcastPan ByteString
                   deriving (Show, Eq)
 
 class FrameIdContainer c where
@@ -180,13 +180,11 @@ instance FrameIdContainer CommandOut where
 
 -- | Serializes an (outgoing) command into a frame.
 commandToFrame :: CommandOut -> Frame
-commandToFrame cmd = frame (ser cmd)
-    where ser = BS.unpack . runPut . put
+commandToFrame = frame . encode
 
 -- | Parses a frame into a (incomming) command.
 frameToCommand :: Frame -> Either String CommandIn
-frameToCommand = parse . frameData
-    where parse = runGet get . BS.pack
+frameToCommand = decode . frameData
 
 
 instance Serialize CommandName where
@@ -212,13 +210,13 @@ instance Serialize TransmitStatus where
 
 instance Serialize CommandIn where
     put (ModemStatusUpdate s) = putWord8 0x8A >> put s
-    put (ATCommandResponse f cmd st d) = putWord8 0x88 >> put f >> put cmd >> put st >> putData d
+    put (ATCommandResponse f cmd st d) = putWord8 0x88 >> put f >> put cmd >> put st >> putByteString d
     put (RemoteATCommandResponse f a64 a16 cmd st d) = putWord8 0x97 >> put f >> put a64 >> put a16 >>
-        put cmd >> put st >> putData d
+        put cmd >> put st >> putByteString d
     put (TransmitResponse f st) = putWord8 0x89 >> put f >> put st
-    put (Receive64 a ss adbc panbc d) = putWord8 0x80 >> put a >> put ss >> put opts >> putData d
+    put (Receive64 a ss adbc panbc d) = putWord8 0x80 >> put a >> put ss >> put opts >> putByteString d
         where opts = bitOpt receiveBitAddress adbc .|. bitOpt receiveBitPan panbc
-    put (Receive16 a ss adbc panbc d) = putWord8 0x81 >> put a >> put ss >> put opts >> putData d
+    put (Receive16 a ss adbc panbc d) = putWord8 0x81 >> put a >> put ss >> put opts >> putByteString d
         where opts = bitOpt receiveBitAddress adbc .|. bitOpt receiveBitPan panbc
     get = getWord8 >>= getCmdIn where
         getCmdIn 0x8A = liftM ModemStatusUpdate get
@@ -236,15 +234,15 @@ receiveBitAddress = 1
 receiveBitPan = 2
 
 instance Serialize CommandOut where
-    put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putData d
-    put (ATQueueCommand f cmd d) = putWord8 0x09 >> put f >> put cmd >> putData d
+    put (ATCommand f cmd d) = putWord8 0x08 >> put f >> put cmd >> putByteString d
+    put (ATQueueCommand f cmd d) = putWord8 0x09 >> put f >> put cmd >> putByteString d
     put (RemoteATCommand64 f adr ac cmd d) = putWord8 0x17 >> put f >> put adr >>
-            putWord16be 0xFFFE >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
+            putWord16be 0xFFFE >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putByteString d
     put (RemoteATCommand16 f adr ac cmd d) = putWord8 0x17 >> put f >> putWord64be 0xFFFF >>
-            put adr >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putData d
-    put (Transmit64 f adr dack bc d) = putWord8 0x00 >> put f >> put adr >> put opts >> putData d
+            put adr >> put (bitOpt remoteAtCommandBitAC ac) >> put cmd >> putByteString d
+    put (Transmit64 f adr dack bc d) = putWord8 0x00 >> put f >> put adr >> put opts >> putByteString d
         where opts = bitOpt transmitBitDisableAck dack .|. bitOpt transmitBitPanBroadcast bc
-    put (Transmit16 f adr dack bc d) = putWord8 0x01 >> put f >> put adr >> put opts >> putData d
+    put (Transmit16 f adr dack bc d) = putWord8 0x01 >> put f >> put adr >> put opts >> putByteString d
         where opts = bitOpt transmitBitDisableAck dack .|. bitOpt transmitBitPanBroadcast bc
     get = getWord8 >>= getCmdOut where
         getCmdOut 0x08 = ATCommand <$> get <*> get <*> getTillEnd
@@ -273,8 +271,5 @@ transmitBitPanBroadcast = 3
 bitOpt :: Int -> Bool -> Word8
 bitOpt i b = if b then bit i else 0
 
-getTillEnd :: Get [Word8]
-getTillEnd = liftM BS.unpack (remaining >>= getBytes)
-
-putData :: [Word8] -> Put
-putData = putByteString . BS.pack
+getTillEnd :: Get ByteString
+getTillEnd = remaining >>= getBytes
