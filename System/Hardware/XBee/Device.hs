@@ -11,6 +11,9 @@ module System.Hardware.XBee.Device (
     XBeeCmd,
     XBeeCmdAsync,
     fork,
+    localTimeout,
+    remoteTimeout,
+    setTimeouts,
     -- ** Fire (without response)
     fire,
     -- ** Send (with response)
@@ -46,6 +49,7 @@ import Control.Exception as E (bracket,bracket_)
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Reader
+import Control.Monad.State
 import Control.Applicative
 import Control.RequestResponseCorrelator
 import Data.SouSiT
@@ -56,8 +60,8 @@ import qualified Data.SouSiT.Trans as T
 
 
 -- | Command monad for a XBees.
-newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: ReaderT XBee IO a }
-    deriving (Monad, MonadIO, MonadReader XBee, Functor, Applicative)
+newtype XBeeCmd a = XBeeCmd { runXBeeCmd :: StateT Timeouts (ReaderT XBee IO) a }
+    deriving (Monad, MonadIO, MonadReader XBee, MonadState Timeouts, Functor, Applicative)
 
 -- | Command monad with a future as the result.
 type XBeeCmdAsync a = XBeeCmd (Future a)
@@ -82,6 +86,10 @@ instance Functor FrameCmd where
 
 -- | Task to be scheduled. Delay in microseconds and the action to execute after the delay.
 data Scheduled = Scheduled Int (IO ())
+
+data Timeouts = Timeouts { tmoutLocal :: Microsecond,
+                           tmoutRemote :: Microsecond }
+defaultTimeouts = Timeouts (convertUnit (1500 :: Millisecond)) (convertUnit (6 :: Second))
 
 type XBeeCorrelator =  Correlator FrameId CommandResponse
 
@@ -125,8 +133,8 @@ awaitZero v = readTVar v >>= w
           w _ = retry
 
 execute :: XBee -> XBeeCmd a -> IO a
-execute x cmd = bracket_ allocate deallocate run
-    where run = runReaderT (runXBeeCmd cmd) x
+execute x cmd = liftM fst $ bracket_ allocate deallocate run
+    where run = runReaderT (runStateT (runXBeeCmd cmd) defaultTimeouts) x
           allocate = atomically $ modifyTVar (users x) (+ 1)
           deallocate = atomically $ modifyTVar (users x) (subtract 1)
 
@@ -184,7 +192,17 @@ sendCommand x tmo (FrameCmd cmd h) = do
         return future
     where tmoUs = fromIntegral $ toMicroseconds tmo
 
+-- | Timeout for XBee local commands (ATs and such).
+localTimeout :: XBeeCmd Microsecond
+localTimeout = liftM tmoutLocal get
 
+-- | Timeout for commands that involve other XBees.
+remoteTimeout :: XBeeCmd Microsecond
+remoteTimeout = liftM tmoutRemote get
+
+-- | Set the timeout for commands.
+setTimeouts :: (TimeUnit local, TimeUnit remote) => local -> remote -> XBeeCmd ()
+setTimeouts lcal remote = put $ Timeouts (convertUnit lcal) (convertUnit remote)
 
 
 -- | An incoming message (abstracts over Receive64 and Receive16)

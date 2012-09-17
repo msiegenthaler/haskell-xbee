@@ -38,12 +38,8 @@ import System.Hardware.XBee.Device
 import System.Hardware.XBee.Command
 
 
--- TODO really have that as a fixed value?
-remoteTimeout = 10 :: Second
-localTimeout = 2 :: Second
-
-sendLocal  cmd handler = send localTimeout  (FrameCmd cmd handler)
-sendRemote cmd handler = send remoteTimeout (FrameCmd cmd handler)
+sendLocal  cmd handler = localTimeout  >>= flip send (FrameCmd cmd handler)
+sendRemote cmd handler = remoteTimeout >>= flip send (FrameCmd cmd handler)
 
 
 
@@ -168,8 +164,8 @@ instance Serialize NodeInformation where
 discover :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
 discover tmo = setAT discoverTimeout (convertUnit tmo) >>= await >>
                setAT discoverSelfResponse False >>= await >>
-               discover' tmo'
-    where tmo' = convertUnit tmo + localTimeout
+               localTimeout >>= discover' . tmo'
+    where tmo' lcl = convertUnit tmo + lcl
 
 discover' :: TimeUnit time => time -> XBeeCmdAsync [NodeInformation]
 discover' tmout = send tmout $ FrameCmd cmd (input >>= handle [])
